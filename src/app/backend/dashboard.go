@@ -74,7 +74,12 @@ func main() {
 		log.Printf("Could not create heapster client: %s. Continuing.", err)
 	}
 
-	apiHandler, err := handler.CreateHTTPAPIHandler(apiserverClient, heapsterRESTClient, config)
+	helmClient, err := client.CreateHelmTillerClient()
+	if err != nil {
+		log.Printf("Could not create helm tiller client: %s. Continuing.", err)
+	}
+
+	apiHandler, err := handler.CreateHTTPAPIHandler(apiserverClient, heapsterRESTClient, config, helmClient)
 	if err != nil {
 		handleFatalInitError(err)
 	}
@@ -83,6 +88,7 @@ func main() {
 	// TODO(bryk): Disable directory listing.
 	http.Handle("/", handler.MakeGzipHandler(handler.CreateLocaleHandler()))
 	http.Handle("/api/", apiHandler)
+
 	// TODO(maciaszczykm): Move to /appConfig.json as it was discussed in #640.
 	http.Handle("/api/appConfig.json", handler.AppHandler(handler.ConfigHandler))
 	http.Handle("/metrics", prometheus.Handler())

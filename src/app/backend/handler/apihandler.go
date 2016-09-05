@@ -27,6 +27,7 @@ import (
 
 	restful "github.com/emicklei/go-restful"
 	"github.com/kubernetes/dashboard/src/app/backend/client"
+	"github.com/kubernetes/dashboard/src/app/backend/resource/chart"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/cluster"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/common"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/config"
@@ -64,6 +65,7 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	clientK8s "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/helm/pkg/helm"
 )
 
 const (
@@ -82,6 +84,7 @@ type APIHandler struct {
 	config         *restclient.Config
 	verber         common.ResourceVerber
 	csrfKey        string
+	helmClient     *helm.Client
 }
 
 type CsrfToken struct {
@@ -181,7 +184,7 @@ func formatResponseLog(response *restful.Response, request *restful.Request) str
 
 // CreateHTTPAPIHandler creates a new HTTP handler that handles all requests to the API of the backend.
 func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.HeapsterClient,
-	clientConfig *restclient.Config) (http.Handler, error) {
+	clientConfig *restclient.Config, helmClient *helm.Client) (http.Handler, error) {
 
 	verber := common.NewResourceVerber(client.Core().RESTClient(),
 		client.Extensions().RESTClient(), client.Apps().RESTClient(),
@@ -204,7 +207,8 @@ func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.Hea
 		csrfKey = string(bytes)
 	}
 
-	apiHandler := APIHandler{client, heapsterClient, clientConfig, verber, csrfKey}
+	apiHandler := APIHandler{client, heapsterClient, clientConfig, verber, csrfKey, helmClient}
+
 	wsContainer := restful.NewContainer()
 	wsContainer.EnableContentEncoding(true)
 
@@ -254,6 +258,11 @@ func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.Hea
 			To(apiHandler.handleDeployFromFile).
 			Reads(deployment.AppDeploymentFromFileSpec{}).
 			Writes(deployment.AppDeploymentFromFileResponse{}))
+	apiV1Ws.Route(
+		apiV1Ws.POST("/appdeploymentfromchart").
+			To(apiHandler.handleDeployFromChart).
+			Reads(chart.AppDeploymentFromChartSpec{}).
+			Writes(chart.AppDeploymentFromChartResponse{}))
 
 	apiV1Ws.Route(
 		apiV1Ws.GET("/replicationcontroller").
@@ -465,6 +474,20 @@ func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.Hea
 		apiV1Ws.GET("/namespace/{name}/event").
 			To(apiHandler.handleGetNamespaceEvents).
 			Writes(common.EventList{}))
+
+	apiV1Ws.Route(
+		apiV1Ws.POST("/repository").
+			To(apiHandler.handleAddRepository).
+			Reads(chart.RepositorySpec{}).
+			Writes(chart.RepositorySpec{}))
+	apiV1Ws.Route(
+		apiV1Ws.GET("/repository").
+			To(apiHandler.handleGetRepository).
+			Writes(chart.RepositoryListSpec{}))
+	apiV1Ws.Route(
+		apiV1Ws.GET("/repository/{name}").
+			To(apiHandler.handleGetRepositoryCharts).
+			Writes(chart.RepositoryChartListSpec{}))
 
 	apiV1Ws.Route(
 		apiV1Ws.GET("/secret").
@@ -873,6 +896,21 @@ func (apiHandler *APIHandler) handleDeploy(request *restful.Request, response *r
 	}
 
 	response.WriteHeaderAndEntity(http.StatusCreated, appDeploymentSpec)
+}
+
+// Handles deploy from chart API call.
+func (apiHandler *APIHandler) handleDeployFromChart(request *restful.Request, response *restful.Response) {
+	deploymentSpec := new(chart.AppDeploymentFromChartSpec)
+	if err := request.ReadEntity(deploymentSpec); err != nil {
+		handleInternalError(response, err)
+		return
+	}
+	if err := chart.DeployChart(deploymentSpec, apiHandler.helmClient); err != nil {
+		handleInternalError(response, err)
+		return
+	}
+
+	response.WriteHeaderAndEntity(http.StatusCreated, deploymentSpec)
 }
 
 // Handles deploy from file API call.
@@ -1362,6 +1400,47 @@ func (apiHandler *APIHandler) handleGetNamespaceEvents(request *restful.Request,
 		return
 	}
 	response.WriteHeaderAndEntity(http.StatusOK, result)
+}
+
+// Handles adding repository API call.
+func (apiHandler *APIHandler) handleAddRepository(request *restful.Request,
+	response *restful.Response) {
+	repositorySpec := new(chart.RepositorySpec)
+	if err := request.ReadEntity(repositorySpec); err != nil {
+		handleInternalError(response, err)
+		return
+	}
+	if err := chart.AddRepository(repositorySpec); err != nil {
+		handleInternalError(response, err)
+		return
+	}
+
+	response.WriteHeaderAndEntity(http.StatusCreated, repositorySpec)
+}
+
+// Handles get repository list API call.
+func (apiHandler *APIHandler) handleGetRepository(
+	request *restful.Request, response *restful.Response) {
+
+	result, err := chart.GetRepositoryList()
+	if err != nil {
+		handleInternalError(response, err)
+		return
+	}
+
+	response.WriteHeaderAndEntity(http.StatusCreated, result)
+}
+
+// Handles get charts for a repository API call.
+func (apiHandler *APIHandler) handleGetRepositoryCharts(request *restful.Request,
+	response *restful.Response) {
+	repoName := request.PathParameter("name")
+	result, err := chart.GetRepositoryCharts(repoName)
+	if err != nil {
+		handleInternalError(response, err)
+		return
+	}
+	response.WriteHeaderAndEntity(http.StatusCreated, result)
 }
 
 // Handles image pull secret creation API call.
