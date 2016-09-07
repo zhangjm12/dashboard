@@ -24,14 +24,18 @@ import (
 	"github.com/kubernetes/dashboard/src/app/backend/resource/deployment"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/job"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/pod"
+	"github.com/kubernetes/dashboard/src/app/backend/resource/release"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/replicaset"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/replicationcontroller"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/statefulset"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/helm/pkg/helm"
 )
 
 // Workloads structure contains all resource lists grouped into the workloads category.
 type Workloads struct {
+	ReleaseList release.ReleaseList `json:"releaseList"`
+
 	DeploymentList deployment.DeploymentList `json:"deploymentList"`
 
 	ReplicaSetList replicaset.ReplicaSetList `json:"replicaSetList"`
@@ -49,7 +53,7 @@ type Workloads struct {
 
 // GetWorkloads returns a list of all workloads in the cluster.
 func GetWorkloads(client *kubernetes.Clientset, heapsterClient client.HeapsterClient,
-	nsQuery *common.NamespaceQuery, metricQuery *dataselect.MetricQuery) (*Workloads, error) {
+	tiller *helm.Client, nsQuery *common.NamespaceQuery, metricQuery *dataselect.MetricQuery) (*Workloads, error) {
 
 	log.Print("Getting lists of all workloads")
 	channels := &common.ResourceChannels{
@@ -59,6 +63,7 @@ func GetWorkloads(client *kubernetes.Clientset, heapsterClient client.HeapsterCl
 		DaemonSetList:             common.GetDaemonSetListChannel(client, nsQuery, 1),
 		DeploymentList:            common.GetDeploymentListChannel(client, nsQuery, 1),
 		StatefulSetList:           common.GetStatefulSetListChannel(client, nsQuery, 1),
+		ReleaseList:               common.GetReleaseListChannel(tiller, nsQuery, 1),
 		ServiceList:               common.GetServiceListChannel(client, nsQuery, 1),
 		PodList:                   common.GetPodListChannel(client, nsQuery, 7),
 		EventList:                 common.GetEventListChannel(client, nsQuery, 7),
@@ -74,6 +79,7 @@ func GetWorkloadsFromChannels(channels *common.ResourceChannels,
 
 	rsChan := make(chan *replicaset.ReplicaSetList)
 	jobChan := make(chan *job.JobList)
+	releaseChan := make(chan *release.ReleaseList)
 	deploymentChan := make(chan *deployment.DeploymentList)
 	rcChan := make(chan *replicationcontroller.ReplicationControllerList)
 	podChan := make(chan *pod.PodList)
@@ -98,6 +104,12 @@ func GetWorkloadsFromChannels(channels *common.ResourceChannels,
 		jobList, err := job.GetJobListFromChannels(channels, dataselect.DefaultDataSelect, nil)
 		errChan <- err
 		jobChan <- jobList
+	}()
+
+	go func() {
+		releaseList, err := release.GetReleaseListFromChannels(channels, dataselect.DefaultDataSelect, nil)
+		errChan <- err
+		releaseChan <- releaseList
 	}()
 
 	go func() {
@@ -150,6 +162,12 @@ func GetWorkloadsFromChannels(channels *common.ResourceChannels,
 		return nil, err
 	}
 
+	releaseList := <-releaseChan
+	err = <-errChan
+	if err != nil {
+		return nil, err
+	}
+
 	deploymentList := <-deploymentChan
 	err = <-errChan
 	if err != nil {
@@ -172,6 +190,7 @@ func GetWorkloadsFromChannels(channels *common.ResourceChannels,
 		ReplicaSetList:            *rsList,
 		JobList:                   *jobList,
 		ReplicationControllerList: *rcList,
+		ReleaseList:               *releaseList,
 		DeploymentList:            *deploymentList,
 		PodList:                   *podList,
 		DaemonSetList:             *dsList,

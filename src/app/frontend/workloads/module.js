@@ -21,6 +21,7 @@ import jobModule from 'job/module';
 import replicaSetModule from 'replicaset/module';
 import replicationControllerModule from 'replicationcontroller/module';
 import statefulSetModule from 'statefulset/module';
+import releaseListModule from 'releaselist/releaselist_module';
 
 import stateConfig from './stateconfig';
 
@@ -44,6 +45,7 @@ export default angular
           deploymentModule.name,
           daemonSetModule.name,
           statefulSetModule.name,
+          releaseListModule.name,
         ])
     .config(stateConfig)
     .factory('kdWorkloadResource', workloadResource);

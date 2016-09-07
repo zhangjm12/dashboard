@@ -50,6 +50,7 @@ import (
 	"github.com/kubernetes/dashboard/src/app/backend/resource/pod"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/rbacrolebindings"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/rbacroles"
+	"github.com/kubernetes/dashboard/src/app/backend/resource/release"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/replicaset"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/replicationcontroller"
 	"github.com/kubernetes/dashboard/src/app/backend/resource/secret"
@@ -374,6 +375,19 @@ func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.Hea
 		apiV1Ws.GET("/pod/{namespace}/{pod}/event").
 			To(apiHandler.handleGetPodEvents).
 			Writes(common.EventList{}))
+
+	apiV1Ws.Route(
+		apiV1Ws.GET("/release").
+			To(apiHandler.handleGetReleases).
+			Writes(release.ReleaseList{}))
+	apiV1Ws.Route(
+		apiV1Ws.GET("/release/{namespace}").
+			To(apiHandler.handleGetReleases).
+			Writes(release.ReleaseList{}))
+	apiV1Ws.Route(
+		apiV1Ws.GET("/release/{namespace}/{release}").
+			To(apiHandler.handleGetReleaseDetail).
+			Writes(release.ReleaseDetail{}))
 
 	apiV1Ws.Route(
 		apiV1Ws.GET("/deployment").
@@ -1011,7 +1025,11 @@ func (apiHandler *APIHandler) handleGetWorkloads(
 
 	namespace := parseNamespacePathParameter(request)
 	result, err := workload.GetWorkloads(apiHandler.client, apiHandler.heapsterClient,
+<<<<<<< HEAD
 		namespace, dataselect.StandardMetrics)
+=======
+		apiHandler.helmClient, namespace, dataSelect.StandardMetrics)
+>>>>>>> List deployed helm releases on the workloads page
 	if err != nil {
 		handleInternalError(response, err)
 		return
@@ -1172,8 +1190,38 @@ func (apiHandler *APIHandler) handleGetDeploymentDetail(
 
 	namespace := request.PathParameter("namespace")
 	name := request.PathParameter("deployment")
-
 	result, err := deployment.GetDeploymentDetail(apiHandler.client, apiHandler.heapsterClient, namespace, name)
+	if err != nil {
+		handleInternalError(response, err)
+		return
+	}
+
+	response.WriteHeaderAndEntity(http.StatusOK, result)
+}
+
+// Handles get Deployment list API call.
+func (apiHandler *APIHandler) handleGetReleases(
+	request *restful.Request, response *restful.Response) {
+
+	namespace := parseNamespacePathParameter(request)
+	dataSelect := parseDataSelectPathParameter(request)
+	dataSelect.MetricQuery = dataselect.StandardMetrics
+	result, err := release.GetReleaseList(apiHandler.helmClient, namespace, dataSelect, &apiHandler.heapsterClient)
+	if err != nil {
+		handleInternalError(response, err)
+		return
+	}
+
+	response.WriteHeaderAndEntity(http.StatusCreated, result)
+}
+
+// Handles get Release detail API call.
+func (apiHandler *APIHandler) handleGetReleaseDetail(
+	request *restful.Request, response *restful.Response) {
+
+	namespace := request.PathParameter("namespace")
+	name := request.PathParameter("release")
+	result, err := release.GetReleaseDetail(apiHandler.client, namespace, name)
 	if err != nil {
 		handleInternalError(response, err)
 		return

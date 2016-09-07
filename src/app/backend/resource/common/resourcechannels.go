@@ -27,6 +27,9 @@ import (
 	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	rbac "k8s.io/client-go/pkg/apis/rbac/v1alpha1"
 	storage "k8s.io/client-go/pkg/apis/storage/v1beta1"
+	"k8s.io/helm/pkg/helm"
+	"k8s.io/helm/pkg/proto/hapi/release"
+	"k8s.io/helm/pkg/proto/hapi/services"
 )
 
 // ResourceChannels struct holds channels to resource lists. Each list channel is paired with
@@ -46,6 +49,9 @@ type ResourceChannels struct {
 
 	// List and error channels to Replica Sets.
 	ReplicaSetList ReplicaSetListChannel
+
+	// List and error channels to Releases.
+	ReleaseList ReleaseListChannel
 
 	// List and error channels to Deployments.
 	DeploymentList DeploymentListChannel
@@ -381,6 +387,53 @@ func GetReplicationControllerListChannel(client client.Interface,
 type DeploymentListChannel struct {
 	List  chan *extensions.DeploymentList
 	Error chan error
+}
+
+// ReleaseListChannel is a list and error channels to Releases.
+type ReleaseListChannel struct {
+	List  chan *ReleaseList
+	Error chan error
+}
+
+// GetReleaseListChannel returns a pair of channels to a Release list and errors
+// that both must be read numReads times.
+func GetReleaseListChannel(tiller *helm.Client, nsQuery *NamespaceQuery, numReads int) ReleaseListChannel {
+	channel := ReleaseListChannel{
+		List:  make(chan *ReleaseList, numReads),
+		Error: make(chan error, numReads),
+	}
+
+	go func() {
+		// TODO: Get list of releases from helm, pass 'em through channel
+		list := &ReleaseList{}
+
+		stats := []release.Status_Code{
+			release.Status_DEPLOYED,
+		}
+
+		if tiller == nil {
+			return
+		}
+		resp, err := tiller.ListReleases(
+			helm.ReleaseListLimit(5),
+			helm.ReleaseListOffset(""),
+			helm.ReleaseListFilter(""),
+			helm.ReleaseListSort(int32(services.ListSort_NAME)),
+			helm.ReleaseListOrder(int32(services.ListSort_ASC)),
+			helm.ReleaseListStatuses(stats),
+		)
+		if err != nil {
+			return
+		}
+
+		list.Items = resp.GetReleases()
+		for i := 0; i < numReads; i++ {
+			channel.List <- list
+			channel.Error <- nil
+		}
+	}()
+
+	return channel
 }
 
 // GetDeploymentListChannel returns a pair of channels to a Deployment list and errors
