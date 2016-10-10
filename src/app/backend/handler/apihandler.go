@@ -67,6 +67,7 @@ import (
 	clientK8s "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/helm/pkg/helm"
+	helmrelease "k8s.io/helm/pkg/proto/hapi/release"
 )
 
 const (
@@ -387,7 +388,7 @@ func CreateHTTPAPIHandler(client *clientK8s.Clientset, heapsterClient client.Hea
 	apiV1Ws.Route(
 		apiV1Ws.GET("/release/{namespace}/{release}").
 			To(apiHandler.handleGetReleaseDetail).
-			Writes(release.ReleaseDetail{}))
+			Writes(helmrelease.Release{}))
 
 	apiV1Ws.Route(
 		apiV1Ws.GET("/deployment").
@@ -1025,11 +1026,7 @@ func (apiHandler *APIHandler) handleGetWorkloads(
 
 	namespace := parseNamespacePathParameter(request)
 	result, err := workload.GetWorkloads(apiHandler.client, apiHandler.heapsterClient,
-<<<<<<< HEAD
-		namespace, dataselect.StandardMetrics)
-=======
-		apiHandler.helmClient, namespace, dataSelect.StandardMetrics)
->>>>>>> List deployed helm releases on the workloads page
+		apiHandler.helmClient, namespace, dataselect.StandardMetrics)
 	if err != nil {
 		handleInternalError(response, err)
 		return
@@ -1221,7 +1218,7 @@ func (apiHandler *APIHandler) handleGetReleaseDetail(
 
 	namespace := request.PathParameter("namespace")
 	name := request.PathParameter("release")
-	result, err := release.GetReleaseDetail(apiHandler.client, namespace, name)
+	result, err := release.GetReleaseDetail(apiHandler.helmClient, namespace, name)
 	if err != nil {
 		handleInternalError(response, err)
 		return
