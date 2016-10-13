@@ -35,6 +35,7 @@ import {stateName as statefulSetState} from 'statefulset/list/state';
 import {stateName as storageClassState} from 'storageclass/list/state';
 import {stateName as workloadState} from 'workloads/state';
 import {stateName as releaseState} from 'releaselist/releaselist_state';
+import {stateName as releaseState} from 'releaselist/releaselist_state';
 import {stateName as servicesanddiscoveryState} from 'servicesanddiscovery/state';
 
 /**

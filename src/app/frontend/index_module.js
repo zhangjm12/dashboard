@@ -50,6 +50,7 @@ import storageClassModule from './storageclass/module';
 import thirdPartyResourceModule from './thirdpartyresource/module';
 import {TitleController} from './title_controller';
 import workloadsModule from './workloads/module';
+import releaseListModule from './releaselist/releaselist_module';
 
 export default angular
     .module(
