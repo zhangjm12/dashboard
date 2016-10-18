@@ -12,38 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import chromeModule from 'chrome/module';
-import configMapModule from 'configmap/module';
-import persistentVolumeClaimModule from 'persistentvolumeclaim/module';
-import secretModule from 'secret/module';
-import repositoryListModule from 'repositorylist/repositorylist_module';
+import chromeModule from 'chrome/chrome_module';
+import componentsModule from 'common/components/components_module';
+import filtersModule from 'common/filters/filters_module';
+import eventsModule from 'events/events_module';
 
-import stateConfig from './stateconfig';
+import stateConfig from './repositorydetail_stateconfig';
+import {repositoryInfoComponent} from './repositoryinfo_component';
+
 
 /**
- * Module for the config category.
+ * Angular module for the Repository details view.
+ *
+ * The view shows detailed view of a Repository.
  */
 export default angular
     .module(
-        'kubernetesDashboard.config',
+        'kubernetesDashboard.repositoryDetail',
         [
           'ngMaterial',
           'ngResource',
           'ui.router',
+          componentsModule.name,
           chromeModule.name,
-          configMapModule.name,
-          secretModule.name,
-          persistentVolumeClaimModule.name,
-          repositoryListModule.name,
+          filtersModule.name,
+          eventsModule.name,
         ])
     .config(stateConfig)
-    .factory('kdConfigResource', resource);
-
-/**
- * @param {!angular.$resource} $resource
- * @return {!angular.Resource}
- * @ngInject
- */
-function resource($resource) {
-  return $resource('api/v1/config/:namespace');
-}
+    .component('kdRepository', repositoryInfoComponent);

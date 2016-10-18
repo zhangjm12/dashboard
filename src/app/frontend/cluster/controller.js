@@ -39,12 +39,13 @@ export class ClusterController {
     /** @export {!angular.Resource} */
     this.kdRoleListResource = kdRoleListResource;
     /** @export {!angular.Resource} */
-    this.kdStorageClassListResource = kdStorageClassListResource;
+    this.kdRepositoryListResource = kdRepositoryListResource;
   }
 
   /**
    * @return {boolean}
    * @export
+   * @suppress {missingProperties}
    */
   shouldShowZeroState() {
     /** @type {number} */
