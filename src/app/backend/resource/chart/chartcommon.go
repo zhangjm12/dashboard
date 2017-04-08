@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"k8s.io/helm/cmd/helm/downloader"
-	"k8s.io/helm/cmd/helm/helmpath"
+	"k8s.io/helm/pkg/downloader"
+	"k8s.io/helm/pkg/helm/helmpath"
 	"k8s.io/helm/pkg/repo"
 )
 

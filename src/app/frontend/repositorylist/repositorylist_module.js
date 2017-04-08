@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import componentsModule from 'common/components/components_module';
-import filtersModule from 'common/filters/filters_module';
-import paginationModule from 'common/pagination/pagination_module';
+import componentsModule from 'common/components/module';
+import filtersModule from 'common/filters/module';
+import paginationModule from 'common/pagination/module';
 import repositoryDetailModule from 'repositorydetail/repositorydetail_module';
 
 import {RepositoryService} from './repository_service';

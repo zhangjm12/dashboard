@@ -18,10 +18,18 @@ It has these top-level messages:
 	GetReleaseContentResponse
 	UpdateReleaseRequest
 	UpdateReleaseResponse
+	RollbackReleaseRequest
+	RollbackReleaseResponse
 	InstallReleaseRequest
 	InstallReleaseResponse
 	UninstallReleaseRequest
 	UninstallReleaseResponse
+	GetVersionRequest
+	GetVersionResponse
+	GetHistoryRequest
+	GetHistoryResponse
+	TestReleaseRequest
+	TestReleaseResponse
 */
 package services
 
@@ -30,9 +38,10 @@ import fmt "fmt"
 import math "math"
 import hapi_chart3 "k8s.io/helm/pkg/proto/hapi/chart"
 import hapi_chart "k8s.io/helm/pkg/proto/hapi/chart"
+import hapi_release5 "k8s.io/helm/pkg/proto/hapi/release"
+import hapi_release4 "k8s.io/helm/pkg/proto/hapi/release"
 import hapi_release3 "k8s.io/helm/pkg/proto/hapi/release"
-import hapi_release2 "k8s.io/helm/pkg/proto/hapi/release"
-import hapi_release1 "k8s.io/helm/pkg/proto/hapi/release"
+import hapi_version "k8s.io/helm/pkg/proto/hapi/version"
 
 import (
 	context "golang.org/x/net/context"
@@ -46,7 +55,9 @@ var _ = math.Inf
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
-const _ = proto.ProtoPackageIsVersion1
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 // SortBy defines sort operations.
 type ListSort_SortBy int32
@@ -117,7 +128,9 @@ type ListReleasesRequest struct {
 	Filter string `protobuf:"bytes,4,opt,name=filter" json:"filter,omitempty"`
 	// SortOrder is the ordering directive used for sorting.
 	SortOrder   ListSort_SortOrder          `protobuf:"varint,5,opt,name=sort_order,json=sortOrder,enum=hapi.services.tiller.ListSort_SortOrder" json:"sort_order,omitempty"`
-	StatusCodes []hapi_release1.Status_Code `protobuf:"varint,6,rep,name=status_codes,json=statusCodes,enum=hapi.release.Status_Code" json:"status_codes,omitempty"`
+	StatusCodes []hapi_release3.Status_Code `protobuf:"varint,6,rep,packed,name=status_codes,json=statusCodes,enum=hapi.release.Status_Code" json:"status_codes,omitempty"`
+	// Namespace is the filter to select releases only from a specific namespace.
+	Namespace string `protobuf:"bytes,7,opt,name=namespace" json:"namespace,omitempty"`
 }
 
 func (m *ListReleasesRequest) Reset()                    { *m = ListReleasesRequest{} }
@@ -144,7 +157,7 @@ type ListReleasesResponse struct {
 	// Total is the total number of queryable releases.
 	Total int64 `protobuf:"varint,3,opt,name=total" json:"total,omitempty"`
 	// Releases is the list of found release objects.
-	Releases []*hapi_release3.Release `protobuf:"bytes,4,rep,name=releases" json:"releases,omitempty"`
+	Releases []*hapi_release5.Release `protobuf:"bytes,4,rep,name=releases" json:"releases,omitempty"`
 }
 
 func (m *ListReleasesResponse) Reset()                    { *m = ListReleasesResponse{} }
@@ -152,7 +165,7 @@ func (m *ListReleasesResponse) String() string            { return proto.Compact
 func (*ListReleasesResponse) ProtoMessage()               {}
 func (*ListReleasesResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
 
-func (m *ListReleasesResponse) GetReleases() []*hapi_release3.Release {
+func (m *ListReleasesResponse) GetReleases() []*hapi_release5.Release {
 	if m != nil {
 		return m.Releases
 	}
@@ -177,7 +190,7 @@ type GetReleaseStatusResponse struct {
 	// Name is the name of the release.
 	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
 	// Info contains information about the release.
-	Info *hapi_release2.Info `protobuf:"bytes,2,opt,name=info" json:"info,omitempty"`
+	Info *hapi_release4.Info `protobuf:"bytes,2,opt,name=info" json:"info,omitempty"`
 	// Namesapce the release was released into
 	Namespace string `protobuf:"bytes,3,opt,name=namespace" json:"namespace,omitempty"`
 }
@@ -187,7 +200,7 @@ func (m *GetReleaseStatusResponse) String() string            { return proto.Com
 func (*GetReleaseStatusResponse) ProtoMessage()               {}
 func (*GetReleaseStatusResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
 
-func (m *GetReleaseStatusResponse) GetInfo() *hapi_release2.Info {
+func (m *GetReleaseStatusResponse) GetInfo() *hapi_release4.Info {
 	if m != nil {
 		return m.Info
 	}
@@ -210,7 +223,7 @@ func (*GetReleaseContentRequest) Descriptor() ([]byte, []int) { return fileDescr
 // GetReleaseContentResponse is a response containing the contents of a release.
 type GetReleaseContentResponse struct {
 	// The release content
-	Release *hapi_release3.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+	Release *hapi_release5.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
 }
 
 func (m *GetReleaseContentResponse) Reset()                    { *m = GetReleaseContentResponse{} }
@@ -218,7 +231,7 @@ func (m *GetReleaseContentResponse) String() string            { return proto.Co
 func (*GetReleaseContentResponse) ProtoMessage()               {}
 func (*GetReleaseContentResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
 
-func (m *GetReleaseContentResponse) GetRelease() *hapi_release3.Release {
+func (m *GetReleaseContentResponse) GetRelease() *hapi_release5.Release {
 	if m != nil {
 		return m.Release
 	}
@@ -237,6 +250,18 @@ type UpdateReleaseRequest struct {
 	DryRun bool `protobuf:"varint,4,opt,name=dry_run,json=dryRun" json:"dry_run,omitempty"`
 	// DisableHooks causes the server to skip running any hooks for the upgrade.
 	DisableHooks bool `protobuf:"varint,5,opt,name=disable_hooks,json=disableHooks" json:"disable_hooks,omitempty"`
+	// Performs pods restart for resources if applicable
+	Recreate bool `protobuf:"varint,6,opt,name=recreate" json:"recreate,omitempty"`
+	// timeout specifies the max amount of time any kubernetes client command can run.
+	Timeout int64 `protobuf:"varint,7,opt,name=timeout" json:"timeout,omitempty"`
+	// ResetValues will cause Tiller to ignore stored values, resetting to default values.
+	ResetValues bool `protobuf:"varint,8,opt,name=reset_values,json=resetValues" json:"reset_values,omitempty"`
+	// wait, if true, will wait until all Pods, PVCs, and Services are in a ready state
+	// before marking the release as successful. It will wait for as long as timeout
+	Wait bool `protobuf:"varint,9,opt,name=wait" json:"wait,omitempty"`
+	// ReuseValues will cause Tiller to reuse the values from the last release.
+	// This is ignored if reset_values is set.
+	ReuseValues bool `protobuf:"varint,10,opt,name=reuse_values,json=reuseValues" json:"reuse_values,omitempty"`
 }
 
 func (m *UpdateReleaseRequest) Reset()                    { *m = UpdateReleaseRequest{} }
@@ -260,7 +285,7 @@ func (m *UpdateReleaseRequest) GetValues() *hapi_chart.Config {
 
 // UpdateReleaseResponse is the response to an update request.
 type UpdateReleaseResponse struct {
-	Release *hapi_release3.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+	Release *hapi_release5.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
 }
 
 func (m *UpdateReleaseResponse) Reset()                    { *m = UpdateReleaseResponse{} }
@@ -268,7 +293,47 @@ func (m *UpdateReleaseResponse) String() string            { return proto.Compac
 func (*UpdateReleaseResponse) ProtoMessage()               {}
 func (*UpdateReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{8} }
 
-func (m *UpdateReleaseResponse) GetRelease() *hapi_release3.Release {
+func (m *UpdateReleaseResponse) GetRelease() *hapi_release5.Release {
+	if m != nil {
+		return m.Release
+	}
+	return nil
+}
+
+type RollbackReleaseRequest struct {
+	// The name of the release
+	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	// dry_run, if true, will run through the release logic but no create
+	DryRun bool `protobuf:"varint,2,opt,name=dry_run,json=dryRun" json:"dry_run,omitempty"`
+	// DisableHooks causes the server to skip running any hooks for the rollback
+	DisableHooks bool `protobuf:"varint,3,opt,name=disable_hooks,json=disableHooks" json:"disable_hooks,omitempty"`
+	// Version is the version of the release to deploy.
+	Version int32 `protobuf:"varint,4,opt,name=version" json:"version,omitempty"`
+	// Performs pods restart for resources if applicable
+	Recreate bool `protobuf:"varint,5,opt,name=recreate" json:"recreate,omitempty"`
+	// timeout specifies the max amount of time any kubernetes client command can run.
+	Timeout int64 `protobuf:"varint,6,opt,name=timeout" json:"timeout,omitempty"`
+	// wait, if true, will wait until all Pods, PVCs, and Services are in a ready state
+	// before marking the release as successful. It will wait for as long as timeout
+	Wait bool `protobuf:"varint,7,opt,name=wait" json:"wait,omitempty"`
+}
+
+func (m *RollbackReleaseRequest) Reset()                    { *m = RollbackReleaseRequest{} }
+func (m *RollbackReleaseRequest) String() string            { return proto.CompactTextString(m) }
+func (*RollbackReleaseRequest) ProtoMessage()               {}
+func (*RollbackReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
+
+// RollbackReleaseResponse is the response to an update request.
+type RollbackReleaseResponse struct {
+	Release *hapi_release5.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+}
+
+func (m *RollbackReleaseResponse) Reset()                    { *m = RollbackReleaseResponse{} }
+func (m *RollbackReleaseResponse) String() string            { return proto.CompactTextString(m) }
+func (*RollbackReleaseResponse) ProtoMessage()               {}
+func (*RollbackReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
+
+func (m *RollbackReleaseResponse) GetRelease() *hapi_release5.Release {
 	if m != nil {
 		return m.Release
 	}
@@ -295,12 +360,17 @@ type InstallReleaseRequest struct {
 	Namespace string `protobuf:"bytes,6,opt,name=namespace" json:"namespace,omitempty"`
 	// ReuseName requests that Tiller re-uses a name, instead of erroring out.
 	ReuseName bool `protobuf:"varint,7,opt,name=reuse_name,json=reuseName" json:"reuse_name,omitempty"`
+	// timeout specifies the max amount of time any kubernetes client command can run.
+	Timeout int64 `protobuf:"varint,8,opt,name=timeout" json:"timeout,omitempty"`
+	// wait, if true, will wait until all Pods, PVCs, and Services are in a ready state
+	// before marking the release as successful. It will wait for as long as timeout
+	Wait bool `protobuf:"varint,9,opt,name=wait" json:"wait,omitempty"`
 }
 
 func (m *InstallReleaseRequest) Reset()                    { *m = InstallReleaseRequest{} }
 func (m *InstallReleaseRequest) String() string            { return proto.CompactTextString(m) }
 func (*InstallReleaseRequest) ProtoMessage()               {}
-func (*InstallReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
+func (*InstallReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
 
 func (m *InstallReleaseRequest) GetChart() *hapi_chart3.Chart {
 	if m != nil {
@@ -318,15 +388,15 @@ func (m *InstallReleaseRequest) GetValues() *hapi_chart.Config {
 
 // InstallReleaseResponse is the response from a release installation.
 type InstallReleaseResponse struct {
-	Release *hapi_release3.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+	Release *hapi_release5.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
 }
 
 func (m *InstallReleaseResponse) Reset()                    { *m = InstallReleaseResponse{} }
 func (m *InstallReleaseResponse) String() string            { return proto.CompactTextString(m) }
 func (*InstallReleaseResponse) ProtoMessage()               {}
-func (*InstallReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
+func (*InstallReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
 
-func (m *InstallReleaseResponse) GetRelease() *hapi_release3.Release {
+func (m *InstallReleaseResponse) GetRelease() *hapi_release5.Release {
 	if m != nil {
 		return m.Release
 	}
@@ -341,30 +411,114 @@ type UninstallReleaseRequest struct {
 	DisableHooks bool `protobuf:"varint,2,opt,name=disable_hooks,json=disableHooks" json:"disable_hooks,omitempty"`
 	// Purge removes the release from the store and make its name free for later use.
 	Purge bool `protobuf:"varint,3,opt,name=purge" json:"purge,omitempty"`
+	// timeout specifies the max amount of time any kubernetes client command can run.
+	Timeout int64 `protobuf:"varint,4,opt,name=timeout" json:"timeout,omitempty"`
 }
 
 func (m *UninstallReleaseRequest) Reset()                    { *m = UninstallReleaseRequest{} }
 func (m *UninstallReleaseRequest) String() string            { return proto.CompactTextString(m) }
 func (*UninstallReleaseRequest) ProtoMessage()               {}
-func (*UninstallReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
+func (*UninstallReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{13} }
 
 // UninstallReleaseResponse represents a successful response to an uninstall request.
 type UninstallReleaseResponse struct {
 	// Release is the release that was marked deleted.
-	Release *hapi_release3.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+	Release *hapi_release5.Release `protobuf:"bytes,1,opt,name=release" json:"release,omitempty"`
+	// Info is an uninstall message
+	Info string `protobuf:"bytes,2,opt,name=info" json:"info,omitempty"`
 }
 
 func (m *UninstallReleaseResponse) Reset()                    { *m = UninstallReleaseResponse{} }
 func (m *UninstallReleaseResponse) String() string            { return proto.CompactTextString(m) }
 func (*UninstallReleaseResponse) ProtoMessage()               {}
-func (*UninstallReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
+func (*UninstallReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
 
-func (m *UninstallReleaseResponse) GetRelease() *hapi_release3.Release {
+func (m *UninstallReleaseResponse) GetRelease() *hapi_release5.Release {
 	if m != nil {
 		return m.Release
 	}
 	return nil
 }
+
+// GetVersionRequest requests for version information.
+type GetVersionRequest struct {
+}
+
+func (m *GetVersionRequest) Reset()                    { *m = GetVersionRequest{} }
+func (m *GetVersionRequest) String() string            { return proto.CompactTextString(m) }
+func (*GetVersionRequest) ProtoMessage()               {}
+func (*GetVersionRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
+
+type GetVersionResponse struct {
+	Version *hapi_version.Version `protobuf:"bytes,1,opt,name=Version" json:"Version,omitempty"`
+}
+
+func (m *GetVersionResponse) Reset()                    { *m = GetVersionResponse{} }
+func (m *GetVersionResponse) String() string            { return proto.CompactTextString(m) }
+func (*GetVersionResponse) ProtoMessage()               {}
+func (*GetVersionResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
+
+func (m *GetVersionResponse) GetVersion() *hapi_version.Version {
+	if m != nil {
+		return m.Version
+	}
+	return nil
+}
+
+// GetHistoryRequest requests a release's history.
+type GetHistoryRequest struct {
+	// The name of the release.
+	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	// The maximum number of releases to include.
+	Max int32 `protobuf:"varint,2,opt,name=max" json:"max,omitempty"`
+}
+
+func (m *GetHistoryRequest) Reset()                    { *m = GetHistoryRequest{} }
+func (m *GetHistoryRequest) String() string            { return proto.CompactTextString(m) }
+func (*GetHistoryRequest) ProtoMessage()               {}
+func (*GetHistoryRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{17} }
+
+// GetHistoryResponse is received in response to a GetHistory rpc.
+type GetHistoryResponse struct {
+	Releases []*hapi_release5.Release `protobuf:"bytes,1,rep,name=releases" json:"releases,omitempty"`
+}
+
+func (m *GetHistoryResponse) Reset()                    { *m = GetHistoryResponse{} }
+func (m *GetHistoryResponse) String() string            { return proto.CompactTextString(m) }
+func (*GetHistoryResponse) ProtoMessage()               {}
+func (*GetHistoryResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{18} }
+
+func (m *GetHistoryResponse) GetReleases() []*hapi_release5.Release {
+	if m != nil {
+		return m.Releases
+	}
+	return nil
+}
+
+// TestReleaseRequest is a request to get the status of a release.
+type TestReleaseRequest struct {
+	// Name is the name of the release
+	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	// timeout specifies the max amount of time any kubernetes client command can run.
+	Timeout int64 `protobuf:"varint,2,opt,name=timeout" json:"timeout,omitempty"`
+	// cleanup specifies whether or not to attempt pod deletion after test completes
+	Cleanup bool `protobuf:"varint,3,opt,name=cleanup" json:"cleanup,omitempty"`
+}
+
+func (m *TestReleaseRequest) Reset()                    { *m = TestReleaseRequest{} }
+func (m *TestReleaseRequest) String() string            { return proto.CompactTextString(m) }
+func (*TestReleaseRequest) ProtoMessage()               {}
+func (*TestReleaseRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{19} }
+
+// TestReleaseResponse represents a message from executing a test
+type TestReleaseResponse struct {
+	Msg string `protobuf:"bytes,1,opt,name=msg" json:"msg,omitempty"`
+}
+
+func (m *TestReleaseResponse) Reset()                    { *m = TestReleaseResponse{} }
+func (m *TestReleaseResponse) String() string            { return proto.CompactTextString(m) }
+func (*TestReleaseResponse) ProtoMessage()               {}
+func (*TestReleaseResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{20} }
 
 func init() {
 	proto.RegisterType((*ListReleasesRequest)(nil), "hapi.services.tiller.ListReleasesRequest")
@@ -376,10 +530,18 @@ func init() {
 	proto.RegisterType((*GetReleaseContentResponse)(nil), "hapi.services.tiller.GetReleaseContentResponse")
 	proto.RegisterType((*UpdateReleaseRequest)(nil), "hapi.services.tiller.UpdateReleaseRequest")
 	proto.RegisterType((*UpdateReleaseResponse)(nil), "hapi.services.tiller.UpdateReleaseResponse")
+	proto.RegisterType((*RollbackReleaseRequest)(nil), "hapi.services.tiller.RollbackReleaseRequest")
+	proto.RegisterType((*RollbackReleaseResponse)(nil), "hapi.services.tiller.RollbackReleaseResponse")
 	proto.RegisterType((*InstallReleaseRequest)(nil), "hapi.services.tiller.InstallReleaseRequest")
 	proto.RegisterType((*InstallReleaseResponse)(nil), "hapi.services.tiller.InstallReleaseResponse")
 	proto.RegisterType((*UninstallReleaseRequest)(nil), "hapi.services.tiller.UninstallReleaseRequest")
 	proto.RegisterType((*UninstallReleaseResponse)(nil), "hapi.services.tiller.UninstallReleaseResponse")
+	proto.RegisterType((*GetVersionRequest)(nil), "hapi.services.tiller.GetVersionRequest")
+	proto.RegisterType((*GetVersionResponse)(nil), "hapi.services.tiller.GetVersionResponse")
+	proto.RegisterType((*GetHistoryRequest)(nil), "hapi.services.tiller.GetHistoryRequest")
+	proto.RegisterType((*GetHistoryResponse)(nil), "hapi.services.tiller.GetHistoryResponse")
+	proto.RegisterType((*TestReleaseRequest)(nil), "hapi.services.tiller.TestReleaseRequest")
+	proto.RegisterType((*TestReleaseResponse)(nil), "hapi.services.tiller.TestReleaseResponse")
 	proto.RegisterEnum("hapi.services.tiller.ListSort_SortBy", ListSort_SortBy_name, ListSort_SortBy_value)
 	proto.RegisterEnum("hapi.services.tiller.ListSort_SortOrder", ListSort_SortOrder_name, ListSort_SortOrder_value)
 }
@@ -390,7 +552,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion1
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for ReleaseService service
 
@@ -402,7 +564,7 @@ type ReleaseServiceClient interface {
 	ListReleases(ctx context.Context, in *ListReleasesRequest, opts ...grpc.CallOption) (ReleaseService_ListReleasesClient, error)
 	// GetReleasesStatus retrieves status information for the specified release.
 	GetReleaseStatus(ctx context.Context, in *GetReleaseStatusRequest, opts ...grpc.CallOption) (*GetReleaseStatusResponse, error)
-	// GetReleaseContent retrieves the release content (chart + value) for the specifed release.
+	// GetReleaseContent retrieves the release content (chart + value) for the specified release.
 	GetReleaseContent(ctx context.Context, in *GetReleaseContentRequest, opts ...grpc.CallOption) (*GetReleaseContentResponse, error)
 	// UpdateRelease updates release content.
 	UpdateRelease(ctx context.Context, in *UpdateReleaseRequest, opts ...grpc.CallOption) (*UpdateReleaseResponse, error)
@@ -410,6 +572,14 @@ type ReleaseServiceClient interface {
 	InstallRelease(ctx context.Context, in *InstallReleaseRequest, opts ...grpc.CallOption) (*InstallReleaseResponse, error)
 	// UninstallRelease requests deletion of a named release.
 	UninstallRelease(ctx context.Context, in *UninstallReleaseRequest, opts ...grpc.CallOption) (*UninstallReleaseResponse, error)
+	// GetVersion returns the current version of the server.
+	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
+	// RollbackRelease rolls back a release to a previous version.
+	RollbackRelease(ctx context.Context, in *RollbackReleaseRequest, opts ...grpc.CallOption) (*RollbackReleaseResponse, error)
+	// ReleaseHistory retrieves a releasse's history.
+	GetHistory(ctx context.Context, in *GetHistoryRequest, opts ...grpc.CallOption) (*GetHistoryResponse, error)
+	// RunReleaseTest executes the tests defined of a named release
+	RunReleaseTest(ctx context.Context, in *TestReleaseRequest, opts ...grpc.CallOption) (ReleaseService_RunReleaseTestClient, error)
 }
 
 type releaseServiceClient struct {
@@ -497,6 +667,65 @@ func (c *releaseServiceClient) UninstallRelease(ctx context.Context, in *Uninsta
 	return out, nil
 }
 
+func (c *releaseServiceClient) GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error) {
+	out := new(GetVersionResponse)
+	err := grpc.Invoke(ctx, "/hapi.services.tiller.ReleaseService/GetVersion", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *releaseServiceClient) RollbackRelease(ctx context.Context, in *RollbackReleaseRequest, opts ...grpc.CallOption) (*RollbackReleaseResponse, error) {
+	out := new(RollbackReleaseResponse)
+	err := grpc.Invoke(ctx, "/hapi.services.tiller.ReleaseService/RollbackRelease", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *releaseServiceClient) GetHistory(ctx context.Context, in *GetHistoryRequest, opts ...grpc.CallOption) (*GetHistoryResponse, error) {
+	out := new(GetHistoryResponse)
+	err := grpc.Invoke(ctx, "/hapi.services.tiller.ReleaseService/GetHistory", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *releaseServiceClient) RunReleaseTest(ctx context.Context, in *TestReleaseRequest, opts ...grpc.CallOption) (ReleaseService_RunReleaseTestClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_ReleaseService_serviceDesc.Streams[1], c.cc, "/hapi.services.tiller.ReleaseService/RunReleaseTest", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &releaseServiceRunReleaseTestClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ReleaseService_RunReleaseTestClient interface {
+	Recv() (*TestReleaseResponse, error)
+	grpc.ClientStream
+}
+
+type releaseServiceRunReleaseTestClient struct {
+	grpc.ClientStream
+}
+
+func (x *releaseServiceRunReleaseTestClient) Recv() (*TestReleaseResponse, error) {
+	m := new(TestReleaseResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Server API for ReleaseService service
 
 type ReleaseServiceServer interface {
@@ -507,7 +736,7 @@ type ReleaseServiceServer interface {
 	ListReleases(*ListReleasesRequest, ReleaseService_ListReleasesServer) error
 	// GetReleasesStatus retrieves status information for the specified release.
 	GetReleaseStatus(context.Context, *GetReleaseStatusRequest) (*GetReleaseStatusResponse, error)
-	// GetReleaseContent retrieves the release content (chart + value) for the specifed release.
+	// GetReleaseContent retrieves the release content (chart + value) for the specified release.
 	GetReleaseContent(context.Context, *GetReleaseContentRequest) (*GetReleaseContentResponse, error)
 	// UpdateRelease updates release content.
 	UpdateRelease(context.Context, *UpdateReleaseRequest) (*UpdateReleaseResponse, error)
@@ -515,6 +744,14 @@ type ReleaseServiceServer interface {
 	InstallRelease(context.Context, *InstallReleaseRequest) (*InstallReleaseResponse, error)
 	// UninstallRelease requests deletion of a named release.
 	UninstallRelease(context.Context, *UninstallReleaseRequest) (*UninstallReleaseResponse, error)
+	// GetVersion returns the current version of the server.
+	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
+	// RollbackRelease rolls back a release to a previous version.
+	RollbackRelease(context.Context, *RollbackReleaseRequest) (*RollbackReleaseResponse, error)
+	// ReleaseHistory retrieves a releasse's history.
+	GetHistory(context.Context, *GetHistoryRequest) (*GetHistoryResponse, error)
+	// RunReleaseTest executes the tests defined of a named release
+	RunReleaseTest(*TestReleaseRequest, ReleaseService_RunReleaseTestServer) error
 }
 
 func RegisterReleaseServiceServer(s *grpc.Server, srv ReleaseServiceServer) {
@@ -542,64 +779,169 @@ func (x *releaseServiceListReleasesServer) Send(m *ListReleasesResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _ReleaseService_GetReleaseStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _ReleaseService_GetReleaseStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetReleaseStatusRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ReleaseServiceServer).GetReleaseStatus(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).GetReleaseStatus(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/GetReleaseStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).GetReleaseStatus(ctx, req.(*GetReleaseStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _ReleaseService_GetReleaseContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _ReleaseService_GetReleaseContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetReleaseContentRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ReleaseServiceServer).GetReleaseContent(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).GetReleaseContent(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/GetReleaseContent",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).GetReleaseContent(ctx, req.(*GetReleaseContentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _ReleaseService_UpdateRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _ReleaseService_UpdateRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateReleaseRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ReleaseServiceServer).UpdateRelease(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).UpdateRelease(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/UpdateRelease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).UpdateRelease(ctx, req.(*UpdateReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _ReleaseService_InstallRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _ReleaseService_InstallRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InstallReleaseRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ReleaseServiceServer).InstallRelease(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).InstallRelease(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/InstallRelease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).InstallRelease(ctx, req.(*InstallReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _ReleaseService_UninstallRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _ReleaseService_UninstallRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UninstallReleaseRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ReleaseServiceServer).UninstallRelease(ctx, in)
-	if err != nil {
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).UninstallRelease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/UninstallRelease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).UninstallRelease(ctx, req.(*UninstallReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReleaseService_GetVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVersionRequest)
+	if err := dec(in); err != nil {
 		return nil, err
 	}
-	return out, nil
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).GetVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/GetVersion",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).GetVersion(ctx, req.(*GetVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReleaseService_RollbackRelease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RollbackReleaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).RollbackRelease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/RollbackRelease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).RollbackRelease(ctx, req.(*RollbackReleaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReleaseService_GetHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReleaseServiceServer).GetHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/hapi.services.tiller.ReleaseService/GetHistory",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReleaseServiceServer).GetHistory(ctx, req.(*GetHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReleaseService_RunReleaseTest_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TestReleaseRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ReleaseServiceServer).RunReleaseTest(m, &releaseServiceRunReleaseTestServer{stream})
+}
+
+type ReleaseService_RunReleaseTestServer interface {
+	Send(*TestReleaseResponse) error
+	grpc.ServerStream
+}
+
+type releaseServiceRunReleaseTestServer struct {
+	grpc.ServerStream
+}
+
+func (x *releaseServiceRunReleaseTestServer) Send(m *TestReleaseResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 var _ReleaseService_serviceDesc = grpc.ServiceDesc{
@@ -626,6 +968,18 @@ var _ReleaseService_serviceDesc = grpc.ServiceDesc{
 			MethodName: "UninstallRelease",
 			Handler:    _ReleaseService_UninstallRelease_Handler,
 		},
+		{
+			MethodName: "GetVersion",
+			Handler:    _ReleaseService_GetVersion_Handler,
+		},
+		{
+			MethodName: "RollbackRelease",
+			Handler:    _ReleaseService_RollbackRelease_Handler,
+		},
+		{
+			MethodName: "GetHistory",
+			Handler:    _ReleaseService_GetHistory_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -633,62 +987,91 @@ var _ReleaseService_serviceDesc = grpc.ServiceDesc{
 			Handler:       _ReleaseService_ListReleases_Handler,
 			ServerStreams: true,
 		},
+		{
+			StreamName:    "RunReleaseTest",
+			Handler:       _ReleaseService_RunReleaseTest_Handler,
+			ServerStreams: true,
+		},
 	},
+	Metadata: fileDescriptor0,
 }
 
+func init() { proto.RegisterFile("hapi/services/tiller.proto", fileDescriptor0) }
+
 var fileDescriptor0 = []byte{
-	// 841 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x9c, 0x56, 0xdd, 0x6e, 0xeb, 0x44,
-	0x10, 0xae, 0xf3, 0xe3, 0x24, 0x93, 0xb6, 0x4a, 0x97, 0xb6, 0x71, 0x2d, 0x40, 0x95, 0x11, 0x50,
-	0x0a, 0x24, 0x10, 0x6e, 0x11, 0x52, 0x9a, 0x46, 0x6d, 0xd5, 0x90, 0x4a, 0x1b, 0x2a, 0x24, 0x2e,
-	0x88, 0xdc, 0x64, 0xd3, 0x18, 0x5c, 0x3b, 0x78, 0x37, 0x11, 0x7d, 0x04, 0x5e, 0x83, 0xa7, 0xe0,
-	0x86, 0x27, 0xe3, 0x86, 0xf5, 0xae, 0xd7, 0x27, 0x4e, 0xec, 0x73, 0x7c, 0x72, 0xe3, 0xec, 0xee,
-	0x7c, 0xfb, 0xcd, 0xcc, 0x37, 0xb3, 0xd3, 0x82, 0x39, 0xb7, 0x17, 0x4e, 0x9b, 0x92, 0x60, 0xe5,
-	0x4c, 0x08, 0x6d, 0x33, 0xc7, 0x75, 0x49, 0xd0, 0x5a, 0x04, 0x3e, 0xf3, 0xd1, 0x71, 0x68, 0x6b,
-	0x29, 0x5b, 0x4b, 0xda, 0xcc, 0x53, 0x71, 0x63, 0x32, 0xb7, 0x03, 0x26, 0xbf, 0x12, 0x6d, 0x36,
-	0xd7, 0xcf, 0x7d, 0x6f, 0xe6, 0x3c, 0x47, 0x06, 0xe9, 0x22, 0x20, 0x2e, 0xb1, 0x29, 0x51, 0xbf,
-	0x89, 0x4b, 0xca, 0xe6, 0x78, 0x33, 0x3f, 0x32, 0x9c, 0x25, 0x0c, 0x94, 0xd9, 0x6c, 0x49, 0xa5,
-	0xc9, 0xfa, 0xbb, 0x00, 0x1f, 0x0c, 0x1c, 0xca, 0xb0, 0x34, 0x52, 0x4c, 0xfe, 0x58, 0x12, 0xca,
-	0xd0, 0x31, 0x94, 0x5d, 0xe7, 0xc5, 0x61, 0x86, 0x76, 0xae, 0x5d, 0x14, 0xb1, 0xdc, 0xa0, 0x53,
-	0xd0, 0xfd, 0xd9, 0x8c, 0x12, 0x66, 0x14, 0xf8, 0x71, 0x0d, 0x47, 0x3b, 0xf4, 0x03, 0x54, 0xa8,
-	0x1f, 0xb0, 0xf1, 0xd3, 0xab, 0x51, 0xe4, 0x86, 0xc3, 0xce, 0xa7, 0xad, 0xb4, 0x74, 0x5b, 0xa1,
-	0xa7, 0x11, 0x07, 0xb6, 0xc2, 0xcf, 0xd5, 0x2b, 0xd6, 0xa9, 0xf8, 0x0d, 0x79, 0x67, 0x8e, 0xcb,
-	0x48, 0x60, 0x94, 0x24, 0xaf, 0xdc, 0xa1, 0x1b, 0x00, 0xc1, 0xeb, 0x07, 0x53, 0x6e, 0x2b, 0x0b,
-	0xea, 0x8b, 0x1c, 0xd4, 0x0f, 0x21, 0x1e, 0xd7, 0xa8, 0x5a, 0xa2, 0xef, 0x61, 0x5f, 0xa6, 0x3d,
-	0x9e, 0xf8, 0x53, 0x42, 0x0d, 0xfd, 0xbc, 0xc8, 0xa9, 0xce, 0x24, 0x95, 0x52, 0x71, 0x24, 0x85,
-	0xe9, 0x71, 0x04, 0xae, 0x4b, 0x78, 0xb8, 0xa6, 0xd6, 0xaf, 0x50, 0x55, 0xf4, 0x56, 0x07, 0x74,
-	0x19, 0x3c, 0xaa, 0x43, 0xe5, 0x71, 0x78, 0x3f, 0x7c, 0xf8, 0x79, 0xd8, 0xd8, 0x43, 0x55, 0x28,
-	0x0d, 0xbb, 0x3f, 0xf6, 0x1b, 0x1a, 0x3a, 0x82, 0x83, 0x41, 0x77, 0xf4, 0xd3, 0x18, 0xf7, 0x07,
-	0xfd, 0xee, 0xa8, 0x7f, 0xdd, 0x28, 0x58, 0x1f, 0x43, 0x2d, 0x8e, 0x0a, 0x55, 0xa0, 0xd8, 0x1d,
-	0xf5, 0xe4, 0x95, 0xeb, 0x3e, 0x5f, 0x69, 0xd6, 0x5f, 0x1a, 0x1c, 0x27, 0x8b, 0x40, 0x17, 0xbe,
-	0x47, 0x49, 0x58, 0x85, 0x89, 0xbf, 0xf4, 0xe2, 0x2a, 0x88, 0x0d, 0x42, 0x50, 0xf2, 0xc8, 0x9f,
-	0xaa, 0x06, 0x62, 0x1d, 0x22, 0x99, 0xcf, 0x6c, 0x57, 0xe8, 0xcf, 0x91, 0x62, 0x83, 0xbe, 0x85,
-	0x6a, 0x94, 0x1c, 0xe5, 0xca, 0x16, 0x2f, 0xea, 0x9d, 0x93, 0x64, 0xca, 0x91, 0x47, 0x1c, 0xc3,
-	0xac, 0x1b, 0x68, 0xde, 0x10, 0x15, 0x89, 0x54, 0x44, 0xf5, 0x44, 0xe8, 0xd7, 0x7e, 0x21, 0x22,
-	0x98, 0xd0, 0x2f, 0x5f, 0x23, 0x03, 0x2a, 0x2b, 0x12, 0x50, 0xc7, 0xf7, 0x44, 0x38, 0x65, 0xac,
-	0xb6, 0x16, 0x03, 0x63, 0x9b, 0x28, 0xca, 0x2b, 0x8d, 0xe9, 0x33, 0x28, 0x85, 0x2d, 0x2b, 0x68,
-	0xea, 0x1d, 0x94, 0x8c, 0xf3, 0x8e, 0x5b, 0xb0, 0xb0, 0xa3, 0x0f, 0xa1, 0x16, 0xe2, 0xe9, 0xc2,
-	0x9e, 0x10, 0x91, 0x6d, 0x0d, 0xbf, 0x39, 0xb0, 0x6e, 0xd7, 0xbd, 0xf6, 0x7c, 0x8f, 0x11, 0x8f,
-	0xed, 0x16, 0xff, 0x00, 0xce, 0x52, 0x98, 0xa2, 0x04, 0xda, 0x50, 0x89, 0x42, 0x13, 0x6c, 0x99,
-	0xba, 0x2a, 0x94, 0xf5, 0x2f, 0x2f, 0xf1, 0xe3, 0x62, 0x6a, 0x33, 0xa2, 0x4c, 0x6f, 0x09, 0xea,
-	0x73, 0x5e, 0xf6, 0xf0, 0xe9, 0x47, 0x5a, 0x1c, 0x49, 0x6e, 0x39, 0x1f, 0x7a, 0xe1, 0x17, 0x4b,
-	0x3b, 0xba, 0x04, 0x7d, 0x65, 0xbb, 0x9c, 0x47, 0x08, 0x11, 0xab, 0x16, 0x21, 0xc5, 0xdc, 0xc0,
-	0x11, 0x02, 0x35, 0xa1, 0x32, 0x0d, 0x5e, 0xc7, 0xc1, 0xd2, 0x13, 0x8f, 0xac, 0x8a, 0x75, 0xbe,
-	0xc5, 0x4b, 0x0f, 0x7d, 0x02, 0x07, 0x53, 0x87, 0xda, 0x4f, 0x2e, 0x19, 0xcf, 0x7d, 0xff, 0x77,
-	0x2a, 0xde, 0x59, 0x15, 0xef, 0x47, 0x87, 0xb7, 0xe1, 0x19, 0xd7, 0xf5, 0x64, 0x23, 0xfc, 0x5d,
-	0x95, 0xf8, 0x4f, 0x83, 0x93, 0x3b, 0x8f, 0x3f, 0x2f, 0xd7, 0xdd, 0x90, 0x22, 0x4e, 0x5b, 0xcb,
-	0x9d, 0x76, 0xe1, 0x7d, 0xd2, 0x2e, 0x26, 0xd2, 0x56, 0xc2, 0x97, 0xd6, 0x84, 0xcf, 0x23, 0x45,
-	0xb2, 0x01, 0xf5, 0x8d, 0x06, 0x44, 0x1f, 0x01, 0x04, 0x64, 0x49, 0xc9, 0x58, 0x90, 0x57, 0xc4,
-	0xfd, 0x9a, 0x38, 0x19, 0xf2, 0x03, 0xeb, 0x0e, 0x4e, 0x37, 0x93, 0xdf, 0x55, 0xc8, 0x39, 0x34,
-	0x1f, 0x3d, 0x27, 0x55, 0xc9, 0xb4, 0xa6, 0xda, 0xca, 0xad, 0x90, 0x92, 0x1b, 0x1f, 0x23, 0x8b,
-	0x65, 0xf0, 0x4c, 0x22, 0xad, 0xe4, 0xc6, 0xba, 0x07, 0x63, 0xdb, 0xd3, 0x8e, 0x61, 0x77, 0xfe,
-	0x29, 0xc3, 0xa1, 0x9a, 0x0a, 0x72, 0x86, 0x23, 0x07, 0xf6, 0xd7, 0xc7, 0x1f, 0xfa, 0x22, 0x7b,
-	0xc4, 0x6f, 0xfc, 0x9d, 0x32, 0x2f, 0xf3, 0x40, 0x65, 0xa8, 0xd6, 0xde, 0x37, 0x1a, 0xa2, 0xd0,
-	0xd8, 0x9c, 0x4a, 0xe8, 0xeb, 0x74, 0x8e, 0x8c, 0x31, 0x68, 0xb6, 0xf2, 0xc2, 0x95, 0x5b, 0xb4,
-	0x82, 0xa3, 0xad, 0x51, 0x82, 0xde, 0x49, 0x93, 0x9c, 0x5e, 0x66, 0x3b, 0x37, 0x3e, 0xf6, 0xfb,
-	0x1b, 0x1c, 0x24, 0x1e, 0x2d, 0xca, 0x50, 0x2b, 0x6d, 0x30, 0x99, 0x5f, 0xe6, 0xc2, 0xc6, 0xbe,
-	0x5e, 0xe0, 0x30, 0xd9, 0xd8, 0x28, 0x83, 0x20, 0xf5, 0xed, 0x9b, 0x5f, 0xe5, 0x03, 0xc7, 0xee,
-	0x78, 0x1d, 0x37, 0x5b, 0x32, 0xab, 0x8e, 0x19, 0x8f, 0x24, 0xab, 0x8e, 0x59, 0x9d, 0x6e, 0xed,
-	0x5d, 0xc1, 0x2f, 0x55, 0x85, 0x7e, 0xd2, 0xc5, 0xff, 0x4f, 0xdf, 0xfd, 0x1f, 0x00, 0x00, 0xff,
-	0xff, 0xd9, 0x8f, 0xae, 0xcb, 0xf4, 0x09, 0x00, 0x00,
+	// 1170 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x9c, 0x57, 0xdb, 0x6e, 0xe3, 0x44,
+	0x18, 0xae, 0xe3, 0x1c, 0xff, 0x1e, 0x48, 0xa7, 0x27, 0xd7, 0x02, 0x54, 0x8c, 0xa0, 0xd9, 0x85,
+	0x4d, 0x21, 0x5c, 0x21, 0x21, 0xa4, 0x6e, 0x37, 0x6a, 0x0b, 0xa5, 0x2b, 0x39, 0xdb, 0x45, 0x42,
+	0x88, 0xc8, 0x4d, 0x26, 0xad, 0x59, 0xc7, 0x13, 0x3c, 0xe3, 0xb2, 0xbd, 0xe5, 0x8e, 0x47, 0xe1,
+	0x2d, 0x78, 0x01, 0x78, 0x01, 0x5e, 0x06, 0x79, 0x0e, 0x6e, 0xc6, 0xb5, 0x5b, 0x6f, 0x6e, 0x62,
+	0xcf, 0xfc, 0xe7, 0xef, 0xff, 0xfd, 0xcd, 0x04, 0xec, 0x6b, 0x6f, 0xe6, 0x1f, 0x50, 0x1c, 0xdd,
+	0xf8, 0x23, 0x4c, 0x0f, 0x98, 0x1f, 0x04, 0x38, 0xea, 0xce, 0x22, 0xc2, 0x08, 0xda, 0x4c, 0x64,
+	0x5d, 0x25, 0xeb, 0x0a, 0x99, 0xbd, 0xcd, 0x2d, 0x46, 0xd7, 0x5e, 0xc4, 0xc4, 0xaf, 0xd0, 0xb6,
+	0x77, 0xe6, 0xf7, 0x49, 0x38, 0xf1, 0xaf, 0xa4, 0x40, 0x84, 0x88, 0x70, 0x80, 0x3d, 0x8a, 0xd5,
+	0x53, 0x33, 0x52, 0x32, 0x3f, 0x9c, 0x10, 0x29, 0xd8, 0xd5, 0x04, 0x94, 0x79, 0x2c, 0xa6, 0x9a,
+	0xbf, 0x1b, 0x1c, 0x51, 0x9f, 0x84, 0xea, 0x29, 0x64, 0xce, 0xdf, 0x15, 0xd8, 0x38, 0xf3, 0x29,
+	0x73, 0x85, 0x21, 0x75, 0xf1, 0x6f, 0x31, 0xa6, 0x0c, 0x6d, 0x42, 0x2d, 0xf0, 0xa7, 0x3e, 0xb3,
+	0x8c, 0x3d, 0xa3, 0x63, 0xba, 0x62, 0x81, 0xb6, 0xa1, 0x4e, 0x26, 0x13, 0x8a, 0x99, 0x55, 0xd9,
+	0x33, 0x3a, 0x2d, 0x57, 0xae, 0xd0, 0xb7, 0xd0, 0xa0, 0x24, 0x62, 0xc3, 0xcb, 0x5b, 0xcb, 0xdc,
+	0x33, 0x3a, 0x6b, 0xbd, 0x4f, 0xba, 0x79, 0x50, 0x74, 0x93, 0x48, 0x03, 0x12, 0xb1, 0x6e, 0xf2,
+	0xf3, 0xfc, 0xd6, 0xad, 0x53, 0xfe, 0x4c, 0xfc, 0x4e, 0xfc, 0x80, 0xe1, 0xc8, 0xaa, 0x0a, 0xbf,
+	0x62, 0x85, 0x8e, 0x01, 0xb8, 0x5f, 0x12, 0x8d, 0x71, 0x64, 0xd5, 0xb8, 0xeb, 0x4e, 0x09, 0xd7,
+	0x2f, 0x13, 0x7d, 0xb7, 0x45, 0xd5, 0x2b, 0xfa, 0x06, 0x56, 0x04, 0x24, 0xc3, 0x11, 0x19, 0x63,
+	0x6a, 0xd5, 0xf7, 0xcc, 0xce, 0x5a, 0x6f, 0x57, 0xb8, 0x52, 0x08, 0x0f, 0x04, 0x68, 0x47, 0x64,
+	0x8c, 0xdd, 0x65, 0xa1, 0x9e, 0xbc, 0x53, 0xf4, 0x3e, 0xb4, 0x42, 0x6f, 0x8a, 0xe9, 0xcc, 0x1b,
+	0x61, 0xab, 0xc1, 0x33, 0xbc, 0xdb, 0x70, 0x7e, 0x81, 0xa6, 0x0a, 0xee, 0xf4, 0xa0, 0x2e, 0x4a,
+	0x43, 0xcb, 0xd0, 0xb8, 0x38, 0xff, 0xfe, 0xfc, 0xe5, 0x8f, 0xe7, 0xed, 0x25, 0xd4, 0x84, 0xea,
+	0xf9, 0xe1, 0x0f, 0xfd, 0xb6, 0x81, 0xd6, 0x61, 0xf5, 0xec, 0x70, 0xf0, 0x6a, 0xe8, 0xf6, 0xcf,
+	0xfa, 0x87, 0x83, 0xfe, 0x8b, 0x76, 0xc5, 0xf9, 0x10, 0x5a, 0x69, 0xce, 0xa8, 0x01, 0xe6, 0xe1,
+	0xe0, 0x48, 0x98, 0xbc, 0xe8, 0x0f, 0x8e, 0xda, 0x86, 0xf3, 0xa7, 0x01, 0x9b, 0x7a, 0x8b, 0xe8,
+	0x8c, 0x84, 0x14, 0x27, 0x3d, 0x1a, 0x91, 0x38, 0x4c, 0x7b, 0xc4, 0x17, 0x08, 0x41, 0x35, 0xc4,
+	0x6f, 0x55, 0x87, 0xf8, 0x7b, 0xa2, 0xc9, 0x08, 0xf3, 0x02, 0xde, 0x1d, 0xd3, 0x15, 0x0b, 0xf4,
+	0x25, 0x34, 0x65, 0xe9, 0xd4, 0xaa, 0xee, 0x99, 0x9d, 0xe5, 0xde, 0x96, 0x0e, 0x88, 0x8c, 0xe8,
+	0xa6, 0x6a, 0xce, 0x31, 0xec, 0x1c, 0x63, 0x95, 0x89, 0xc0, 0x4b, 0x4d, 0x4c, 0x12, 0xd7, 0x9b,
+	0x62, 0x9e, 0x4c, 0x12, 0xd7, 0x9b, 0x62, 0x64, 0x41, 0x43, 0x8e, 0x1b, 0x4f, 0xa7, 0xe6, 0xaa,
+	0xa5, 0xc3, 0xc0, 0xba, 0xef, 0x48, 0xd6, 0x95, 0xe7, 0xe9, 0x53, 0xa8, 0x26, 0xc3, 0xce, 0xdd,
+	0x2c, 0xf7, 0x90, 0x9e, 0xe7, 0x69, 0x38, 0x21, 0x2e, 0x97, 0xeb, 0xad, 0x32, 0xb3, 0xad, 0x3a,
+	0x99, 0x8f, 0x7a, 0x44, 0x42, 0x86, 0x43, 0xb6, 0x58, 0xfe, 0x67, 0xb0, 0x9b, 0xe3, 0x49, 0x16,
+	0x70, 0x00, 0x0d, 0x99, 0x1a, 0xf7, 0x56, 0x88, 0xab, 0xd2, 0x72, 0xfe, 0xa9, 0xc0, 0xe6, 0xc5,
+	0x6c, 0xec, 0x31, 0xac, 0x44, 0x0f, 0x24, 0xb5, 0x0f, 0x35, 0x4e, 0x1a, 0x12, 0x8b, 0x75, 0xe1,
+	0x5b, 0x30, 0xcb, 0x51, 0xf2, 0xeb, 0x0a, 0x39, 0x7a, 0x0a, 0xf5, 0x1b, 0x2f, 0x88, 0x31, 0xe5,
+	0x40, 0xa4, 0xa8, 0x49, 0x4d, 0xce, 0x38, 0xae, 0xd4, 0x40, 0x3b, 0xd0, 0x18, 0x47, 0xb7, 0xc3,
+	0x28, 0x0e, 0xf9, 0x27, 0xd8, 0x74, 0xeb, 0xe3, 0xe8, 0xd6, 0x8d, 0x43, 0xf4, 0x31, 0xac, 0x8e,
+	0x7d, 0xea, 0x5d, 0x06, 0x78, 0x78, 0x4d, 0xc8, 0x1b, 0xca, 0xbf, 0xc2, 0xa6, 0xbb, 0x22, 0x37,
+	0x4f, 0x92, 0x3d, 0x64, 0x27, 0x93, 0x34, 0x8a, 0xb0, 0xc7, 0xb0, 0x55, 0xe7, 0xf2, 0x74, 0x9d,
+	0x60, 0xc8, 0xfc, 0x29, 0x26, 0x31, 0xe3, 0x9f, 0x8e, 0xe9, 0xaa, 0x25, 0xfa, 0x08, 0x56, 0x22,
+	0x4c, 0x31, 0x1b, 0xca, 0x2c, 0x9b, 0xdc, 0x72, 0x99, 0xef, 0xbd, 0x16, 0x69, 0x21, 0xa8, 0xfe,
+	0xee, 0xf9, 0xcc, 0x6a, 0x71, 0x11, 0x7f, 0x17, 0x66, 0x31, 0xc5, 0xca, 0x0c, 0x94, 0x59, 0x4c,
+	0xb1, 0x30, 0x73, 0x4e, 0x60, 0x2b, 0x03, 0xe7, 0xa2, 0x9d, 0xf9, 0xd7, 0x80, 0x6d, 0x97, 0x04,
+	0xc1, 0xa5, 0x37, 0x7a, 0x53, 0xa2, 0x37, 0x73, 0x30, 0x56, 0x1e, 0x86, 0xd1, 0xcc, 0x81, 0x71,
+	0x6e, 0xdc, 0xaa, 0xda, 0xb8, 0x69, 0x00, 0xd7, 0x8a, 0x01, 0xae, 0xeb, 0x00, 0x2b, 0xf4, 0x1a,
+	0x77, 0xe8, 0x39, 0xdf, 0xc1, 0xce, 0xbd, 0x7a, 0x16, 0x05, 0xe7, 0xaf, 0x0a, 0x6c, 0x9d, 0x86,
+	0x94, 0x79, 0x41, 0x90, 0xc1, 0x26, 0x9d, 0x51, 0xa3, 0xf4, 0x8c, 0x56, 0xde, 0x65, 0x46, 0x4d,
+	0x0d, 0x5c, 0xd5, 0x89, 0xea, 0x5c, 0x27, 0x4a, 0xcd, 0xad, 0xc6, 0x16, 0xf5, 0x0c, 0x5b, 0xa0,
+	0x0f, 0x00, 0xc4, 0xa0, 0x71, 0xe7, 0x02, 0xc4, 0x16, 0xdf, 0x39, 0x97, 0xe4, 0xa0, 0x70, 0x6f,
+	0xe6, 0xe3, 0x3e, 0x37, 0xb5, 0xce, 0x29, 0x6c, 0x67, 0xa1, 0x5a, 0x14, 0xf6, 0x3f, 0x0c, 0xd8,
+	0xb9, 0x08, 0xfd, 0x5c, 0xe0, 0xf3, 0x86, 0xf2, 0x1e, 0x14, 0x95, 0x1c, 0x28, 0x36, 0xa1, 0x36,
+	0x8b, 0xa3, 0x2b, 0x2c, 0xa1, 0x15, 0x8b, 0xf9, 0x1a, 0xab, 0x5a, 0x8d, 0xce, 0x10, 0xac, 0xfb,
+	0x39, 0x2c, 0x58, 0x51, 0x92, 0x75, 0xca, 0xee, 0x2d, 0xc1, 0xe4, 0xce, 0x06, 0xac, 0x1f, 0x63,
+	0xf6, 0x5a, 0x7c, 0x00, 0xb2, 0x3c, 0xa7, 0x0f, 0x68, 0x7e, 0xf3, 0x2e, 0x9e, 0xdc, 0xd2, 0xe3,
+	0xa9, 0xab, 0x8e, 0xd2, 0x57, 0x5a, 0xce, 0xd7, 0xdc, 0xf7, 0x89, 0x4f, 0x19, 0x89, 0x6e, 0x1f,
+	0x82, 0xae, 0x0d, 0xe6, 0xd4, 0x7b, 0x2b, 0xc9, 0x3f, 0x79, 0x75, 0x8e, 0x79, 0x06, 0xa9, 0xa9,
+	0xcc, 0x60, 0xfe, 0x28, 0x35, 0xca, 0x1d, 0xa5, 0x3f, 0x03, 0x7a, 0x85, 0xd3, 0x53, 0xfd, 0x91,
+	0x53, 0x48, 0x35, 0xa1, 0xa2, 0x0f, 0x9a, 0x05, 0x8d, 0x51, 0x80, 0xbd, 0x30, 0x9e, 0xc9, 0xb6,
+	0xa9, 0xa5, 0xb3, 0x0f, 0x1b, 0x9a, 0x77, 0x99, 0x67, 0x52, 0x0f, 0xbd, 0x92, 0xde, 0x93, 0xd7,
+	0xde, 0x7f, 0x4d, 0x58, 0x53, 0xc7, 0xb0, 0xb8, 0x52, 0x21, 0x1f, 0x56, 0xe6, 0xef, 0x1b, 0xe8,
+	0x49, 0xf1, 0x8d, 0x2b, 0x73, 0x6d, 0xb4, 0x9f, 0x96, 0x51, 0x15, 0xb9, 0x38, 0x4b, 0x5f, 0x18,
+	0x88, 0x42, 0x3b, 0x7b, 0x0d, 0x40, 0xcf, 0xf2, 0x7d, 0x14, 0xdc, 0x3b, 0xec, 0x6e, 0x59, 0x75,
+	0x15, 0x16, 0xdd, 0xf0, 0xee, 0xeb, 0x67, 0x37, 0x7a, 0xd4, 0x8d, 0x7e, 0x5d, 0xb0, 0x0f, 0x4a,
+	0xeb, 0xa7, 0x71, 0x7f, 0x85, 0x55, 0xed, 0x54, 0x42, 0x05, 0x68, 0xe5, 0xdd, 0x04, 0xec, 0xcf,
+	0x4a, 0xe9, 0xa6, 0xb1, 0xa6, 0xb0, 0xa6, 0xd3, 0x0d, 0x2a, 0x70, 0x90, 0xcb, 0xdf, 0xf6, 0xe7,
+	0xe5, 0x94, 0xd3, 0x70, 0x14, 0xda, 0x59, 0x36, 0x28, 0xea, 0x63, 0x01, 0x73, 0x15, 0xf5, 0xb1,
+	0x88, 0x64, 0x9c, 0x25, 0xe4, 0x01, 0xdc, 0x91, 0x01, 0xda, 0x2f, 0x6c, 0x88, 0xce, 0x21, 0x76,
+	0xe7, 0x71, 0xc5, 0x34, 0xc4, 0x0c, 0xde, 0xcb, 0x9c, 0x96, 0xa8, 0x00, 0x9a, 0xfc, 0x4b, 0x82,
+	0xfd, 0xac, 0xa4, 0x76, 0xa6, 0x28, 0xc9, 0x2f, 0x0f, 0x14, 0xa5, 0x93, 0xd7, 0x03, 0x45, 0x65,
+	0xa8, 0xca, 0x59, 0x42, 0x3e, 0xac, 0xb9, 0x71, 0x28, 0x43, 0x27, 0x2c, 0x81, 0x0a, 0xac, 0xef,
+	0xf3, 0x93, 0xfd, 0xa4, 0x84, 0xe6, 0xdd, 0xf7, 0xfd, 0x1c, 0x7e, 0x6a, 0x2a, 0xd5, 0xcb, 0x3a,
+	0xff, 0xc7, 0xf9, 0xd5, 0xff, 0x01, 0x00, 0x00, 0xff, 0xff, 0x30, 0x80, 0xed, 0x18, 0x42, 0x0f,
+	0x00, 0x00,
 }

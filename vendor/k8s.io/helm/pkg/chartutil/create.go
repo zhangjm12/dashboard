@@ -36,12 +36,37 @@ const (
 	ChartsDir = "charts"
 	// IgnorefileName is the name of the Helm ignore file.
 	IgnorefileName = ".helmignore"
+	// DeploymentName is the name of the example deployment file.
+	DeploymentName = "deployment.yaml"
+	// ServiceName is the name of the example service file.
+	ServiceName = "service.yaml"
+	// NotesName is the name of the example NOTES.txt file.
+	NotesName = "NOTES.txt"
+	// HelpersName is the name of the example NOTES.txt file.
+	HelpersName = "_helpers.tpl"
 )
 
 const defaultValues = `# Default values for %s.
 # This is a YAML-formatted file.
-# Declare name/value pairs to be passed into your templates.
-# name: value
+# Declare variables to be passed into your templates.
+replicaCount: 1
+image:
+  repository: nginx
+  tag: stable
+  pullPolicy: IfNotPresent
+service:
+  name: nginx
+  type: ClusterIP
+  externalPort: 80
+  internalPort: 80
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
 `
 
 const defaultIgnore = `# Patterns to ignore when building packages.
@@ -66,6 +91,100 @@ const defaultIgnore = `# Patterns to ignore when building packages.
 .idea/
 *.tmproj
 `
+
+const defaultDeployment = `apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "fullname" . }}
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.service.internalPort }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: {{ .Values.service.internalPort }}
+        readinessProbe:
+          httpGet:
+            path: /
+            port: {{ .Values.service.internalPort }}
+        resources:
+{{ toYaml .Values.resources | indent 12 }}
+`
+
+const defaultService = `apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "fullname" . }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.externalPort }}
+    targetPort: {{ .Values.service.internalPort }}
+    protocol: TCP
+    name: {{ .Values.service.name }}
+  selector:
+    app: {{ template "fullname" . }}
+`
+
+const defaultNotes = `1. Get the application URL by running these commands:
+{{- if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ template "fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT/login
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get svc -w {{ template "fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ template "fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP:{{ .Values.service.externalPort }}
+{{- else if contains "ClusterIP"  .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "fullname" . }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl port-forward $POD_NAME 8080:{{ .Values.service.externalPort }}
+{{- end }}
+`
+
+const defaultHelpers = `{{/* vim: set filetype=mustache: */}}
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+*/}}
+{{- define "fullname" -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+`
+
+// CreateFrom creates a new chart, but scaffolds it from the src chart.
+func CreateFrom(chartfile *chart.Metadata, dest string, src string) error {
+	schart, err := Load(src)
+	if err != nil {
+		return fmt.Errorf("could not load %s: %s", src, err)
+	}
+
+	schart.Metadata = chartfile
+	return SaveDir(schart, dest)
+}
 
 // Create creates a new chart in a directory.
 //
@@ -101,22 +220,61 @@ func Create(chartfile *chart.Metadata, dir string) (string, error) {
 		return cdir, err
 	}
 
-	if err := SaveChartfile(filepath.Join(cdir, ChartfileName), chartfile); err != nil {
-		return cdir, err
-	}
-
-	val := []byte(fmt.Sprintf(defaultValues, chartfile.Name))
-	if err := ioutil.WriteFile(filepath.Join(cdir, ValuesfileName), val, 0644); err != nil {
-		return cdir, err
-	}
-
-	val = []byte(defaultIgnore)
-	if err := ioutil.WriteFile(filepath.Join(cdir, IgnorefileName), val, 0644); err != nil {
-		return cdir, err
+	cf := filepath.Join(cdir, ChartfileName)
+	if _, err := os.Stat(cf); err != nil {
+		if err := SaveChartfile(cf, chartfile); err != nil {
+			return cdir, err
+		}
 	}
 
 	for _, d := range []string{TemplatesDir, ChartsDir} {
 		if err := os.MkdirAll(filepath.Join(cdir, d), 0755); err != nil {
+			return cdir, err
+		}
+	}
+
+	files := []struct {
+		path    string
+		content []byte
+	}{
+		{
+			// values.yaml
+			path:    filepath.Join(cdir, ValuesfileName),
+			content: []byte(fmt.Sprintf(defaultValues, chartfile.Name)),
+		},
+		{
+			// .helmignore
+			path:    filepath.Join(cdir, IgnorefileName),
+			content: []byte(defaultIgnore),
+		},
+		{
+			// deployment.yaml
+			path:    filepath.Join(cdir, TemplatesDir, DeploymentName),
+			content: []byte(defaultDeployment),
+		},
+		{
+			// service.yaml
+			path:    filepath.Join(cdir, TemplatesDir, ServiceName),
+			content: []byte(defaultService),
+		},
+		{
+			// NOTES.txt
+			path:    filepath.Join(cdir, TemplatesDir, NotesName),
+			content: []byte(defaultNotes),
+		},
+		{
+			// _helpers.tpl
+			path:    filepath.Join(cdir, TemplatesDir, HelpersName),
+			content: []byte(defaultHelpers),
+		},
+	}
+
+	for _, file := range files {
+		if _, err := os.Stat(file.path); err == nil {
+			// File exists and is okay. Skip it.
+			continue
+		}
+		if err := ioutil.WriteFile(file.path, file.content, 0644); err != nil {
 			return cdir, err
 		}
 	}

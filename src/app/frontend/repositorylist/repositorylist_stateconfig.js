@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {actionbarViewName, stateName as chromeStateName} from 'chrome/chrome_state';
-import {breadcrumbsConfig} from 'common/components/breadcrumbs/breadcrumbs_service';
+import {actionbarViewName, stateName as chromeStateName} from 'chrome/state';
+import {breadcrumbsConfig} from 'common/components/breadcrumbs/service';
 
 import {ActionBarController} from './actionbar_controller';
 import {RepositoryListController} from './repositorylist_controller';

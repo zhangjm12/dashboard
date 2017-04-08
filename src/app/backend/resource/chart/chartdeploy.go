@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"k8s.io/helm/cmd/helm/helmpath"
 	"k8s.io/helm/pkg/helm"
+	"k8s.io/helm/pkg/helm/helmpath"
 )
 
 // AppDeploymentFromChartSpec is a specification for a chart deployment.

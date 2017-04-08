@@ -28,7 +28,6 @@ import deploymentModule from './deployment/module';
 import discoveryModule from './discovery/module';
 import errorModule from './error/module';
 import horizontalPodAutoscalerModule from './horizontalpodautoscaler/module';
-import releaseListModule from './releaselist/releaselist_module';
 import indexConfig from './index_config';
 import routeConfig from './index_route';
 import ingressModule from './ingress/module';

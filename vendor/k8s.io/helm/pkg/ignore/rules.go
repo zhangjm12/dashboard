@@ -69,10 +69,7 @@ func Parse(file io.Reader) (*Rules, error) {
 			return r, err
 		}
 	}
-	if err := s.Err(); err != nil {
-		return r, err
-	}
-	return r, nil
+	return r, s.Err()
 }
 
 // Len returns the number of patterns in this rule set.
@@ -85,6 +82,12 @@ func (r *Rules) Len() int {
 // Ignore evaluates path against the rules in order. Evaluation stops when a match
 // is found. Matching a negative rule will stop evaluation.
 func (r *Rules) Ignore(path string, fi os.FileInfo) bool {
+	// Disallow ignoring the current working directory.
+	// See issue:
+	// 1776 (New York City) Hamilton: "Pardon me, are you Aaron Burr, sir?"
+	if path == "." || path == "./" {
+		return false
+	}
 	for _, p := range r.patterns {
 		if p.match == nil {
 			log.Printf("ignore: no matcher supplied for %q", p.raw)

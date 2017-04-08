@@ -53,6 +53,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 // NewServerHandlerTransport returns a ServerTransport handling gRPC
@@ -65,7 +66,7 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request) (ServerTr
 	if r.Method != "POST" {
 		return nil, errors.New("invalid gRPC request method")
 	}
-	if !strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
+	if !validContentType(r.Header.Get("Content-Type")) {
 		return nil, errors.New("invalid gRPC request content-type")
 	}
 	if _, ok := w.(http.Flusher); !ok {
@@ -83,18 +84,21 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request) (ServerTr
 	}
 
 	if v := r.Header.Get("grpc-timeout"); v != "" {
-		to, err := timeoutDecode(v)
+		to, err := decodeTimeout(v)
 		if err != nil {
-			return nil, StreamErrorf(codes.Internal, "malformed time-out: %v", err)
+			return nil, streamErrorf(codes.Internal, "malformed time-out: %v", err)
 		}
 		st.timeoutSet = true
 		st.timeout = to
 	}
 
 	var metakv []string
+	if r.Host != "" {
+		metakv = append(metakv, ":authority", r.Host)
+	}
 	for k, vv := range r.Header {
 		k = strings.ToLower(k)
-		if isReservedHeader(k) {
+		if isReservedHeader(k) && !isWhitelistedPseudoHeader(k) {
 			continue
 		}
 		for _, v := range vv {
@@ -108,7 +112,6 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request) (ServerTr
 				}
 			}
 			metakv = append(metakv, k, v)
-
 		}
 	}
 	st.headerMD = metadata.Pairs(metakv...)
@@ -180,7 +183,7 @@ func (ht *serverHandlerTransport) do(fn func()) error {
 	}
 }
 
-func (ht *serverHandlerTransport) WriteStatus(s *Stream, statusCode codes.Code, statusDesc string) error {
+func (ht *serverHandlerTransport) WriteStatus(s *Stream, st *status.Status) error {
 	err := ht.do(func() {
 		ht.writeCommonHeaders(s)
 
@@ -190,12 +193,19 @@ func (ht *serverHandlerTransport) WriteStatus(s *Stream, statusCode codes.Code, 
 		ht.rw.(http.Flusher).Flush()
 
 		h := ht.rw.Header()
-		h.Set("Grpc-Status", fmt.Sprintf("%d", statusCode))
-		if statusDesc != "" {
-			h.Set("Grpc-Message", statusDesc)
+		h.Set("Grpc-Status", fmt.Sprintf("%d", st.Code()))
+		if m := st.Message(); m != "" {
+			h.Set("Grpc-Message", encodeGrpcMessage(m))
 		}
+
+		// TODO: Support Grpc-Status-Details-Bin
+
 		if md := s.Trailer(); len(md) > 0 {
 			for k, vv := range md {
+				// Clients don't tolerate reading restricted headers after some non restricted ones were sent.
+				if isReservedHeader(k) {
+					continue
+				}
 				for _, v := range vv {
 					// http2 ResponseWriter mechanism to
 					// send undeclared Trailers after the
@@ -228,6 +238,7 @@ func (ht *serverHandlerTransport) writeCommonHeaders(s *Stream) {
 	// and https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
 	h.Add("Trailer", "Grpc-Status")
 	h.Add("Trailer", "Grpc-Message")
+	// TODO: Support Grpc-Status-Details-Bin
 
 	if s.sendCompress != "" {
 		h.Set("Grpc-Encoding", s.sendCompress)
@@ -249,6 +260,10 @@ func (ht *serverHandlerTransport) WriteHeader(s *Stream, md metadata.MD) error {
 		ht.writeCommonHeaders(s)
 		h := ht.rw.Header()
 		for k, vv := range md {
+			// Clients don't tolerate reading restricted headers after some non restricted ones were sent.
+			if isReservedHeader(k) {
+				continue
+			}
 			for _, v := range vv {
 				h.Add(k, v)
 			}
@@ -258,7 +273,7 @@ func (ht *serverHandlerTransport) WriteHeader(s *Stream, md metadata.MD) error {
 	})
 }
 
-func (ht *serverHandlerTransport) HandleStreams(startStream func(*Stream)) {
+func (ht *serverHandlerTransport) HandleStreams(startStream func(*Stream), traceCtx func(context.Context, string) context.Context) {
 	// With this transport type there will be exactly 1 stream: this HTTP request.
 
 	var ctx context.Context
@@ -302,9 +317,9 @@ func (ht *serverHandlerTransport) HandleStreams(startStream func(*Stream)) {
 		Addr: ht.RemoteAddr(),
 	}
 	if req.TLS != nil {
-		pr.AuthInfo = credentials.TLSInfo{*req.TLS}
+		pr.AuthInfo = credentials.TLSInfo{State: *req.TLS}
 	}
-	ctx = metadata.NewContext(ctx, ht.headerMD)
+	ctx = metadata.NewIncomingContext(ctx, ht.headerMD)
 	ctx = peer.NewContext(ctx, pr)
 	s.ctx = newContextWithStream(ctx, s)
 	s.dec = &recvBufferReader{ctx: s.ctx, recv: s.buf}
@@ -360,6 +375,10 @@ func (ht *serverHandlerTransport) runStream() {
 	}
 }
 
+func (ht *serverHandlerTransport) Drain() {
+	panic("Drain() is not implemented")
+}
+
 // mapRecvMsgError returns the non-nil err into the appropriate
 // error value as expected by callers of *grpc.parser.recvMsg.
 // In particular, in can only be:
@@ -379,5 +398,5 @@ func mapRecvMsgError(err error) error {
 			}
 		}
 	}
-	return ConnectionError{Desc: err.Error()}
+	return connectionErrorf(true, err, err.Error())
 }

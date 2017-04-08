@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import chromeModule from 'chrome/chrome_module';
-import componentsModule from 'common/components/components_module';
-import filtersModule from 'common/filters/filters_module';
-import namespaceModule from 'common/namespace/namespace_module';
+import chromeModule from 'chrome/module';
+import componentsModule from 'common/components/module';
+import filtersModule from 'common/filters/module';
+import namespaceModule from 'common/namespace/module';
 import releaseDetailModule from 'releasedetail/releasedetail_module';
 import {releaseCardComponent} from './releasecard_component';
 import {releaseCardListComponent} from './releasecardlist_component';

@@ -22,6 +22,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"github.com/facebookgo/symwalk"
 	"io"
 	"io/ioutil"
 	"os"
@@ -52,10 +53,10 @@ func Load(name string) (*chart.Chart, error) {
 	return LoadFile(name)
 }
 
-// afile represents an archive file buffered for later processing.
-type afile struct {
-	name string
-	data []byte
+// BufferedFile represents an archive file buffered for later processing.
+type BufferedFile struct {
+	Name string
+	Data []byte
 }
 
 // LoadArchive loads from a reader containing a compressed tar archive.
@@ -66,7 +67,7 @@ func LoadArchive(in io.Reader) (*chart.Chart, error) {
 	}
 	defer unzipped.Close()
 
-	files := []*afile{}
+	files := []*BufferedFile{}
 	tr := tar.NewReader(unzipped)
 	for {
 		b := bytes.NewBuffer(nil)
@@ -84,14 +85,27 @@ func LoadArchive(in io.Reader) (*chart.Chart, error) {
 			continue
 		}
 
-		parts := strings.Split(hd.Name, "/")
-		n := strings.Join(parts[1:], "/")
+		// Archive could contain \ if generated on Windows
+		delimiter := "/"
+		if strings.ContainsRune(hd.Name, '\\') {
+			delimiter = "\\"
+		}
+
+		parts := strings.Split(hd.Name, delimiter)
+		n := strings.Join(parts[1:], delimiter)
+
+		// Normalize the path to the / delimiter
+		n = strings.Replace(n, delimiter, "/", -1)
+
+		if parts[0] == "Chart.yaml" {
+			return nil, errors.New("chart yaml not in base directory")
+		}
 
 		if _, err := io.Copy(b, tr); err != nil {
 			return &chart.Chart{}, err
 		}
 
-		files = append(files, &afile{name: n, data: b.Bytes()})
+		files = append(files, &BufferedFile{Name: n, Data: b.Bytes()})
 		b.Reset()
 	}
 
@@ -99,69 +113,79 @@ func LoadArchive(in io.Reader) (*chart.Chart, error) {
 		return nil, errors.New("no files in chart archive")
 	}
 
-	return loadFiles(files)
+	return LoadFiles(files)
 }
 
-func loadFiles(files []*afile) (*chart.Chart, error) {
+// LoadFiles loads from in-memory files.
+func LoadFiles(files []*BufferedFile) (*chart.Chart, error) {
 	c := &chart.Chart{}
-	subcharts := map[string][]*afile{}
+	subcharts := map[string][]*BufferedFile{}
 
 	for _, f := range files {
-		if f.name == "Chart.yaml" {
-			m, err := UnmarshalChartfile(f.data)
+		if f.Name == "Chart.yaml" {
+			m, err := UnmarshalChartfile(f.Data)
 			if err != nil {
 				return c, err
 			}
 			c.Metadata = m
-		} else if f.name == "values.toml" {
+		} else if f.Name == "values.toml" {
 			return c, errors.New("values.toml is illegal as of 2.0.0-alpha.2")
-		} else if f.name == "values.yaml" {
-			c.Values = &chart.Config{Raw: string(f.data)}
-		} else if strings.HasPrefix(f.name, "templates/") {
-			c.Templates = append(c.Templates, &chart.Template{Name: f.name, Data: f.data})
-		} else if strings.HasPrefix(f.name, "charts/") {
-			if filepath.Ext(f.name) == ".prov" {
-				c.Files = append(c.Files, &any.Any{TypeUrl: f.name, Value: f.data})
+		} else if f.Name == "values.yaml" {
+			c.Values = &chart.Config{Raw: string(f.Data)}
+		} else if strings.HasPrefix(f.Name, "templates/") {
+			c.Templates = append(c.Templates, &chart.Template{Name: f.Name, Data: f.Data})
+		} else if strings.HasPrefix(f.Name, "charts/") {
+			if filepath.Ext(f.Name) == ".prov" {
+				c.Files = append(c.Files, &any.Any{TypeUrl: f.Name, Value: f.Data})
 				continue
 			}
-			cname := strings.TrimPrefix(f.name, "charts/")
+			cname := strings.TrimPrefix(f.Name, "charts/")
+			if strings.IndexAny(cname, "._") == 0 {
+				// Ignore charts/ that start with . or _.
+				continue
+			}
 			parts := strings.SplitN(cname, "/", 2)
 			scname := parts[0]
-			subcharts[scname] = append(subcharts[scname], &afile{name: cname, data: f.data})
+			subcharts[scname] = append(subcharts[scname], &BufferedFile{Name: cname, Data: f.Data})
 		} else {
-			c.Files = append(c.Files, &any.Any{TypeUrl: f.name, Value: f.data})
+			c.Files = append(c.Files, &any.Any{TypeUrl: f.Name, Value: f.Data})
 		}
 	}
 
 	// Ensure that we got a Chart.yaml file
-	if c.Metadata == nil || c.Metadata.Name == "" {
+	if c.Metadata == nil {
 		return c, errors.New("chart metadata (Chart.yaml) missing")
+	}
+	if c.Metadata.Name == "" {
+		return c, errors.New("invalid chart (Chart.yaml): name must not be empty")
 	}
 
 	for n, files := range subcharts {
 		var sc *chart.Chart
 		var err error
-		if filepath.Ext(n) == ".tgz" {
+		if strings.IndexAny(n, "_.") == 0 {
+			continue
+		} else if filepath.Ext(n) == ".tgz" {
 			file := files[0]
-			if file.name != n {
-				return c, fmt.Errorf("error unpacking tar in %s: expected %s, got %s", c.Metadata.Name, n, file.name)
+			if file.Name != n {
+				return c, fmt.Errorf("error unpacking tar in %s: expected %s, got %s", c.Metadata.Name, n, file.Name)
 			}
 			// Untar the chart and add to c.Dependencies
-			b := bytes.NewBuffer(file.data)
+			b := bytes.NewBuffer(file.Data)
 			sc, err = LoadArchive(b)
 		} else {
 			// We have to trim the prefix off of every file, and ignore any file
 			// that is in charts/, but isn't actually a chart.
-			buff := make([]*afile, 0, len(files))
+			buff := make([]*BufferedFile, 0, len(files))
 			for _, f := range files {
-				parts := strings.SplitN(f.name, "/", 2)
+				parts := strings.SplitN(f.Name, "/", 2)
 				if len(parts) < 2 {
 					continue
 				}
-				f.name = parts[1]
+				f.Name = parts[1]
 				buff = append(buff, f)
 			}
-			sc, err = loadFiles(buff)
+			sc, err = LoadFiles(buff)
 		}
 
 		if err != nil {
@@ -214,11 +238,15 @@ func LoadDir(dir string) (*chart.Chart, error) {
 	}
 	rules.AddDefaults()
 
-	files := []*afile{}
+	files := []*BufferedFile{}
 	topdir += string(filepath.Separator)
 
-	err = filepath.Walk(topdir, func(name string, fi os.FileInfo, err error) error {
+	err = symwalk.Walk(topdir, func(name string, fi os.FileInfo, err error) error {
 		n := strings.TrimPrefix(name, topdir)
+
+		// Normalize to / since it will also work on Windows
+		n = filepath.ToSlash(n)
+
 		if err != nil {
 			return err
 		}
@@ -241,12 +269,12 @@ func LoadDir(dir string) (*chart.Chart, error) {
 			return fmt.Errorf("error reading %s: %s", n, err)
 		}
 
-		files = append(files, &afile{name: n, data: data})
+		files = append(files, &BufferedFile{Name: n, Data: data})
 		return nil
 	})
 	if err != nil {
 		return c, err
 	}
 
-	return loadFiles(files)
+	return LoadFiles(files)
 }

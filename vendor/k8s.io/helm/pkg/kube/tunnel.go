@@ -17,69 +17,76 @@ limitations under the License.
 package kube
 
 import (
-	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"strconv"
 
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/unversioned/portforward"
 	"k8s.io/kubernetes/pkg/client/unversioned/remotecommand"
 )
 
 // Tunnel describes a ssh-like tunnel to a kubernetes pod
 type Tunnel struct {
-	Local    int
-	Remote   int
-	stopChan chan struct{}
+	Local     int
+	Remote    int
+	Namespace string
+	PodName   string
+	Out       io.Writer
+	stopChan  chan struct{}
+	readyChan chan struct{}
+	config    *restclient.Config
+	client    restclient.Interface
+}
+
+// NewTunnel creates a new tunnel
+func NewTunnel(client restclient.Interface, config *restclient.Config, namespace, podName string, remote int) *Tunnel {
+	return &Tunnel{
+		config:    config,
+		client:    client,
+		Namespace: namespace,
+		PodName:   podName,
+		Remote:    remote,
+		stopChan:  make(chan struct{}, 1),
+		readyChan: make(chan struct{}, 1),
+		Out:       ioutil.Discard,
+	}
 }
 
 // Close disconnects a tunnel connection
 func (t *Tunnel) Close() {
 	close(t.stopChan)
+	close(t.readyChan)
 }
 
 // ForwardPort opens a tunnel to a kubernetes pod
-func (c *Client) ForwardPort(namespace, podName string, remote int) (*Tunnel, error) {
-	client, err := c.Client()
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := c.ClientConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	// Build a url to the portforward endpoing
+func (t *Tunnel) ForwardPort() error {
+	// Build a url to the portforward endpoint
 	// example: http://localhost:8080/api/v1/namespaces/helm/pods/tiller-deploy-9itlq/portforward
-	u := client.RESTClient.Post().
+	u := t.client.Post().
 		Resource("pods").
-		Namespace(namespace).
-		Name(podName).
+		Namespace(t.Namespace).
+		Name(t.PodName).
 		SubResource("portforward").URL()
 
-	dialer, err := remotecommand.NewExecutor(config, "POST", u)
+	dialer, err := remotecommand.NewExecutor(t.config, "POST", u)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	local, err := getAvailablePort()
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("could not find an available port: %s", err)
 	}
+	t.Local = local
 
-	t := &Tunnel{
-		Local:    local,
-		Remote:   remote,
-		stopChan: make(chan struct{}, 1),
-	}
+	ports := []string{fmt.Sprintf("%d:%d", t.Local, t.Remote)}
 
-	ports := []string{fmt.Sprintf("%d:%d", local, remote)}
-
-	var b bytes.Buffer
-	pf, err := portforward.New(dialer, ports, t.stopChan, &b, &b)
+	pf, err := portforward.New(dialer, ports, t.stopChan, t.readyChan, t.Out, t.Out)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	errChan := make(chan error)
@@ -89,9 +96,9 @@ func (c *Client) ForwardPort(namespace, podName string, remote int) (*Tunnel, er
 
 	select {
 	case err = <-errChan:
-		return t, fmt.Errorf("Error forwarding ports: %v\n", err)
+		return fmt.Errorf("forwarding ports: %v", err)
 	case <-pf.Ready:
-		return t, nil
+		return nil
 	}
 }
 
@@ -103,6 +110,9 @@ func getAvailablePort() (int, error) {
 	defer l.Close()
 
 	_, p, err := net.SplitHostPort(l.Addr().String())
+	if err != nil {
+		return 0, err
+	}
 	port, err := strconv.Atoi(p)
 	if err != nil {
 		return 0, err

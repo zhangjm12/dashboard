@@ -609,7 +609,7 @@ func (r *Request) URL() *url.URL {
 // finalURLTemplate is similar to URL(), but will make all specific parameter values equal
 // - instead of name or namespace, "{name}" and "{namespace}" will be used, and all query
 // parameters will be reset. This creates a copy of the request so as not to change the
-// underyling object.  This means some useful request info (like the types of field
+// underlying object.  This means some useful request info (like the types of field
 // selectors in use) will be lost.
 // TODO: preserve field selector keys
 func (r Request) finalURLTemplate() url.URL {
@@ -1035,13 +1035,15 @@ func (r *Request) newUnstructuredResponseError(body []byte, isTextResponse bool,
 	if isTextResponse {
 		message = strings.TrimSpace(string(body))
 	}
+	var groupResource schema.GroupResource
+	if len(r.resource) > 0 {
+		groupResource.Group = r.content.GroupVersion.Group
+		groupResource.Resource = r.resource
+	}
 	return errors.NewGenericServerResponse(
 		statusCode,
 		method,
-		schema.GroupResource{
-			Group:    r.content.GroupVersion.Group,
-			Resource: r.resource,
-		},
+		groupResource,
 		r.resourceName,
 		message,
 		retryAfter,

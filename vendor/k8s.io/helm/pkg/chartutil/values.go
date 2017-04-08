@@ -31,6 +31,9 @@ import (
 // ErrNoTable indicates that a chart does not have a matching table.
 type ErrNoTable error
 
+// ErrNoValue indicates that Values does not contain a key with a value
+type ErrNoValue error
+
 // GlobalKey is the name of the Values key that is used for storing global vars.
 const GlobalKey = "global"
 
@@ -146,32 +149,38 @@ func CoalesceValues(chrt *chart.Chart, vals *chart.Config) (Values, error) {
 		if err != nil {
 			return cvals, err
 		}
-		cvals = coalesce(chrt, evals)
+		cvals, err = coalesce(chrt, evals)
+		if err != nil {
+			return cvals, err
+		}
 	}
 
-	cvals = coalesceDeps(chrt, cvals)
-
-	return cvals, nil
+	var err error
+	cvals, err = coalesceDeps(chrt, cvals)
+	return cvals, err
 }
 
 // coalesce coalesces the dest values and the chart values, giving priority to the dest values.
 //
 // This is a helper function for CoalesceValues.
-func coalesce(ch *chart.Chart, dest map[string]interface{}) map[string]interface{} {
-	dest = coalesceValues(ch, dest)
+func coalesce(ch *chart.Chart, dest map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	dest, err = coalesceValues(ch, dest)
+	if err != nil {
+		return dest, err
+	}
 	coalesceDeps(ch, dest)
-	return dest
+	return dest, nil
 }
 
 // coalesceDeps coalesces the dependencies of the given chart.
-func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}) map[string]interface{} {
+func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}) (map[string]interface{}, error) {
 	for _, subchart := range chrt.Dependencies {
 		if c, ok := dest[subchart.Metadata.Name]; !ok {
 			// If dest doesn't already have the key, create it.
 			dest[subchart.Metadata.Name] = map[string]interface{}{}
 		} else if !istable(c) {
-			log.Printf("error: type mismatch on %s: %t", subchart.Metadata.Name, c)
-			return dest
+			return dest, fmt.Errorf("type mismatch on %s: %t", subchart.Metadata.Name, c)
 		}
 		if dv, ok := dest[subchart.Metadata.Name]; ok {
 			dvmap := dv.(map[string]interface{})
@@ -179,11 +188,15 @@ func coalesceDeps(chrt *chart.Chart, dest map[string]interface{}) map[string]int
 			// Get globals out of dest and merge them into dvmap.
 			coalesceGlobals(dvmap, dest)
 
+			var err error
 			// Now coalesce the rest of the values.
-			dest[subchart.Metadata.Name] = coalesce(subchart, dvmap)
+			dest[subchart.Metadata.Name], err = coalesce(subchart, dvmap)
+			if err != nil {
+				return dest, err
+			}
 		}
 	}
-	return dest
+	return dest, nil
 }
 
 // coalesceGlobals copies the globals out of src and merges them into dest.
@@ -206,15 +219,30 @@ func coalesceGlobals(dest, src map[string]interface{}) map[string]interface{} {
 		return dg
 	}
 
-	// We manually copy (instead of using coalesceTables) because (a) we need
-	// to prevent loops, and (b) we disallow nesting tables under globals.
-	// Globals should _just_ be k/v pairs.
+	// EXPERIMENTAL: In the past, we have disallowed globals to test tables. This
+	// reverses that decision. It may somehow be possible to introduce a loop
+	// here, but I haven't found a way. So for the time being, let's allow
+	// tables in globals.
 	for key, val := range sg {
 		if istable(val) {
-			log.Printf("warning: nested values are illegal in globals (%s)", key)
-			continue
+			vv := copyMap(val.(map[string]interface{}))
+			if destv, ok := dg[key]; ok {
+				if destvmap, ok := destv.(map[string]interface{}); ok {
+					// Basically, we reverse order of coalesce here to merge
+					// top-down.
+					coalesceTables(vv, destvmap)
+					dg[key] = vv
+					continue
+				} else {
+					log.Printf("Conflict: cannot merge map onto non-map for %q. Skipping.", key)
+				}
+			} else {
+				// Here there is no merge. We're just adding.
+				dg[key] = vv
+			}
 		} else if dv, ok := dg[key]; ok && istable(dv) {
-			log.Printf("warning: nested values are illegal in globals (%s)", key)
+			// It's not clear if this condition can actually ever trigger.
+			log.Printf("key %s is table. Skipping", key)
 			continue
 		}
 		// TODO: Do we need to do any additional checking on the value?
@@ -222,16 +250,23 @@ func coalesceGlobals(dest, src map[string]interface{}) map[string]interface{} {
 	}
 	dest[GlobalKey] = dg
 	return dest
+}
 
+func copyMap(src map[string]interface{}) map[string]interface{} {
+	dest := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		dest[k] = v
+	}
+	return dest
 }
 
 // coalesceValues builds up a values map for a particular chart.
 //
 // Values in v will override the values in the chart.
-func coalesceValues(c *chart.Chart, v map[string]interface{}) map[string]interface{} {
+func coalesceValues(c *chart.Chart, v map[string]interface{}) (map[string]interface{}, error) {
 	// If there are no values in the chart, we just return the given values
 	if c.Values == nil || c.Values.Raw == "" {
-		return v
+		return v, nil
 	}
 
 	nv, err := ReadValues([]byte(c.Values.Raw))
@@ -239,8 +274,7 @@ func coalesceValues(c *chart.Chart, v map[string]interface{}) map[string]interfa
 		// On error, we return just the overridden values.
 		// FIXME: We should log this error. It indicates that the YAML data
 		// did not parse.
-		log.Printf("error reading default values (%s): %s", c.Values.Raw, err)
-		return v
+		return v, fmt.Errorf("error reading default values (%s): %s", c.Values.Raw, err)
 	}
 
 	for key, val := range nv {
@@ -259,7 +293,7 @@ func coalesceValues(c *chart.Chart, v map[string]interface{}) map[string]interfa
 			coalesceTables(dest, src)
 		}
 	}
-	return v
+	return v, nil
 }
 
 // coalesceTables merges a source map into a destination map.
@@ -295,20 +329,40 @@ type ReleaseOptions struct {
 	Name      string
 	Time      *timestamp.Timestamp
 	Namespace string
+	IsUpgrade bool
+	IsInstall bool
+	Revision  int
 }
 
 // ToRenderValues composes the struct from the data coming from the Releases, Charts and Values files
+//
+// WARNING: This function is deprecated for Helm > 2.1.99 Use ToRenderValuesCaps() instead. It will
+// remain in the codebase to stay SemVer compliant.
+//
+// In Helm 3.0, this will be changed to accept Capabilities as a fourth parameter.
 func ToRenderValues(chrt *chart.Chart, chrtVals *chart.Config, options ReleaseOptions) (Values, error) {
+	caps := &Capabilities{APIVersions: DefaultVersionSet}
+	return ToRenderValuesCaps(chrt, chrtVals, options, caps)
+}
+
+// ToRenderValuesCaps composes the struct from the data coming from the Releases, Charts and Values files
+//
+// This takes both ReleaseOptions and Capabilities to merge into the render values.
+func ToRenderValuesCaps(chrt *chart.Chart, chrtVals *chart.Config, options ReleaseOptions, caps *Capabilities) (Values, error) {
 
 	top := map[string]interface{}{
 		"Release": map[string]interface{}{
 			"Name":      options.Name,
 			"Time":      options.Time,
 			"Namespace": options.Namespace,
+			"IsUpgrade": options.IsUpgrade,
+			"IsInstall": options.IsInstall,
+			"Revision":  options.Revision,
 			"Service":   "Tiller",
 		},
-		"Chart": chrt.Metadata,
-		"Files": NewFiles(chrt.Files),
+		"Chart":        chrt.Metadata,
+		"Files":        NewFiles(chrt.Files),
+		"Capabilities": caps,
 	}
 
 	vals, err := CoalesceValues(chrt, chrtVals)
@@ -324,4 +378,44 @@ func ToRenderValues(chrt *chart.Chart, chrtVals *chart.Config, options ReleaseOp
 func istable(v interface{}) bool {
 	_, ok := v.(map[string]interface{})
 	return ok
+}
+
+// PathValue takes a yaml path with . notation and returns the value if exists
+func (v Values) PathValue(ypath string) (interface{}, error) {
+	if len(ypath) == 0 {
+		return nil, fmt.Errorf("yaml path string cannot be zero length")
+	}
+	yps := strings.Split(ypath, ".")
+	if len(yps) == 1 {
+		// if exists must be root key not table
+		vals := v.AsMap()
+		k := yps[0]
+		if _, ok := vals[k]; ok && !istable(vals[k]) {
+			// key found
+			return vals[yps[0]], nil
+		}
+		// key not found
+		return nil, ErrNoValue(fmt.Errorf("%v is not a value", k))
+	}
+	// join all elements of YAML path except last to get string table path
+	ypsLen := len(yps)
+	table := yps[:ypsLen-1]
+	st := strings.Join(table, ".")
+	// get the last element as a string key
+	key := yps[ypsLen-1:]
+	sk := string(key[0])
+	// get our table for table path
+	t, err := v.Table(st)
+	if err != nil {
+		//no table
+		return nil, ErrNoValue(fmt.Errorf("%v is not a value", sk))
+	}
+	// check table for key and ensure value is not a table
+	if k, ok := t[sk]; ok && !istable(k) {
+		// key found
+		return k, nil
+	}
+
+	// key not found
+	return nil, ErrNoValue(fmt.Errorf("key not found: %s", sk))
 }
