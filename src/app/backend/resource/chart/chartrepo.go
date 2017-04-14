@@ -145,8 +145,14 @@ func index(dir, url string) error {
 }
 
 func addRepository(name, url string, home helmpath.Home) error {
+	entry := repo.Entry{
+		Name:  name,
+		URL:   url,
+		Cache: fmt.Sprintf("%s-index.yaml", name),
+	}
 	cif := home.CacheIndex(name)
-	if err := repo.DownloadIndexFile(name, url, cif); err != nil {
+	rep, _ := repo.NewChartRepository(&entry)
+	if err := rep.DownloadIndexFile(cif); err != nil {
 		return fmt.Errorf("Looks like %q is not a valid chart repository or cannot be reached: %s", url, err.Error())
 	}
 

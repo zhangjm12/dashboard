@@ -47,16 +47,20 @@ func ensureHome(home helmpath.Home) error {
 	if fi, err := os.Stat(repoFile); err != nil {
 		fmt.Printf("Creating %s \n", repoFile)
 		r := repo.NewRepoFile()
-		r.Add(&repo.Entry{
+
+		entry := repo.Entry{
 			Name:  stableRepository,
 			URL:   stableRepositoryURL,
 			Cache: "stable-index.yaml",
-		})
+		}
+		r.Add(&entry)
 		if err := r.WriteFile(repoFile, 0644); err != nil {
 			return err
 		}
 		cif := home.CacheIndex(stableRepository)
-		if err := repo.DownloadIndexFile(stableRepository, stableRepositoryURL, cif); err != nil {
+		rep, _ := repo.NewChartRepository(&entry)
+		// if err := repo.DownloadIndexFile(stableRepository, stableRepositoryURL, cif); err != nil {
+		if err := rep.DownloadIndexFile(cif); err != nil {
 			fmt.Printf("WARNING: Failed to download %s: %s (run 'helm repo update')\n", stableRepository, err)
 		}
 
