@@ -18,10 +18,10 @@ import (
 	"fmt"
 	"log"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/labels"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 
 	"k8s.io/helm/pkg/helm"
 	"k8s.io/helm/pkg/kube"
@@ -33,7 +33,7 @@ const (
 )
 
 func CreateHelmTillerClient(apiclient *kubernetes.Clientset) (*helm.Client, error) {
-	tunnel, err := newTillerPortForwarder(tillerNamespace)
+	tunnel, err := newTillerPortForwarder(tillerNamespace, apiclient)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,12 @@ func newTillerPortForwarder(namespace string, apiclient *kubernetes.Clientset) (
 		return nil, err
 	}
 	log.Printf("tiller pod found: %q", podName)
-	return kc.ForwardPort(namespace, podName, tillerPort)
+	config, err := kube.GetConfig("").ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	t := kube.NewTunnel(apiclient.CoreV1().RESTClient(), config, namespace, podName, tillerPort)
+	return t, t.ForwardPort()
 }
 
 func getTillerPodName(client *kubernetes.Clientset, namespace string) (string, error) {
@@ -67,7 +72,7 @@ func getTillerPodName(client *kubernetes.Clientset, namespace string) (string, e
 }
 
 func getFirstRunningPod(client *kubernetes.Clientset, namespace string, selector labels.Selector) (*api.Pod, error) {
-	options := api.ListOptions{LabelSelector: selector}
+	options := metav1.ListOptions{LabelSelector: selector.String()}
 	pods, err := client.CoreV1().Pods(namespace).List(options)
 	if err != nil {
 		return nil, err
